@@ -13,6 +13,7 @@ TWriteRequestBundle::TWriteRequestBundle(
     std::shared_ptr<TWriteBlocksLocalRequest> request,
     const NWilson::TTraceId& traceId,
     TCallContextPtr callContext,
+    ui32 vchunkIndex,
     TBlockRange64 vchunkRange)
     : WriteClient(std::move(writeClient))
     , Request(std::move(request))
@@ -23,9 +24,16 @@ TWriteRequestBundle::TWriteRequestBundle(
           NWilson::EFlags::AUTO_END,
           actorSystem)
     , CallContext(std::move(callContext))
+    , VChunkIndex(vchunkIndex)
     , VChunkRange(vchunkRange)
     , Promise(NThreading::NewPromise<TWriteBlocksLocalResponse>())
 {}
+
+void TWriteRequestBundle::AttachExecutor(
+    IWriteRequestExecutorPtr writeRequestExecutor)
+{
+    WriteRequestExecutor = std::move(writeRequestExecutor);
+}
 
 void TWriteRequestBundle::Reply(
     NProto::TError error,
@@ -64,6 +72,15 @@ void TWriteRequestBundle::SendFinalReply(TWriteBlocksLocalResponse response)
     Promise.SetValue(std::move(response));
 }
 
+void TWriteRequestBundle::WriteToPBufferResult(
+    THostIndex host,
+    const TDBGWriteBlocksResponse& response)
+{
+    Y_ABORT_UNLESS(WriteRequestExecutor);
+
+    WriteRequestExecutor->OnWriteToPBufferResponse(host, response);
+}
+
 NThreading::TFuture<TWriteBlocksLocalResponse> TWriteRequestBundle::GetFuture()
 {
     return Promise.GetFuture();
@@ -72,6 +89,22 @@ NThreading::TFuture<TWriteBlocksLocalResponse> TWriteRequestBundle::GetFuture()
 NWilson::TSpan& TWriteRequestBundle::GetSpan()
 {
     return Span;
+}
+
+NWilson::TSpan& TWriteRequestBundle::GetHostSpan(THostIndex host)
+{
+    if (Span && !HostSpans[host]) {
+        HostSpans[host] = Span.CreateChild(
+            NKikimr::TWilsonNbs::NbsBasic,
+            "WriteToPBuffer",
+            NWilson::EFlags::AUTO_END);
+    }
+    return HostSpans[host];
+}
+
+ui32 TWriteRequestBundle::GetVChunkIndex() const
+{
+    return VChunkIndex;
 }
 
 TBlockRange64 TWriteRequestBundle::GetVChunkRange() const
@@ -92,6 +125,11 @@ ui64 TWriteRequestBundle::GetLsn() const
 TGuardedSgList& TWriteRequestBundle::GetSgList()
 {
     return Request->Sglist;
+}
+
+TWriteRequestBundlePtr TWriteRequestBundle::AsShared()
+{
+    return shared_from_this();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

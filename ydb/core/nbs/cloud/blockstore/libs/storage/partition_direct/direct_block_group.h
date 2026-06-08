@@ -153,13 +153,9 @@ public:
         const TGuardedSgList& guardedSglist,
         const NWilson::TTraceId& traceId) = 0;
 
-    virtual NThreading::TFuture<TDBGWriteBlocksResponse> WriteBlocksToPBuffer(
-        ui32 vChunkIndex,
-        THostIndex hostIndex,
-        ui64 lsn,
-        TBlockRange64 range,
-        const TGuardedSgList& guardedSglist,
-        const NWilson::TTraceId& traceId) = 0;
+    virtual void WriteBlocksToPBuffer(
+        TWriteRequestBundlePtr bundle,
+        THostIndex hostIndex) = 0;
 
     using TWriteBlocksToManyPBuffersCallback =
         std::function<void(TDBGWriteBlocksToManyPBuffersResponse)>;

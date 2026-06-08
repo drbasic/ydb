@@ -213,22 +213,11 @@ TDirectBlockGroupMock::WriteBlocksToDDisk(
         traceId);
 }
 
-NThreading::TFuture<TDBGWriteBlocksResponse>
-TDirectBlockGroupMock::WriteBlocksToPBuffer(
-    ui32 vChunkIndex,
-    THostIndex hostIndex,
-    ui64 lsn,
-    TBlockRange64 range,
-    const TGuardedSgList& guardedSglist,
-    const NWilson::TTraceId& traceId)
+void TDirectBlockGroupMock::WriteBlocksToPBuffer(
+    TWriteRequestBundlePtr bundle,
+    THostIndex hostIndex)
 {
-    return WriteBlocksToPBufferHandler(
-        vChunkIndex,
-        hostIndex,
-        lsn,
-        range,
-        guardedSglist,
-        traceId);
+    WriteBlocksToPBufferHandler(std::move(bundle), hostIndex);
 }
 
 void TDirectBlockGroupMock::WriteBlocksToManyPBuffers(

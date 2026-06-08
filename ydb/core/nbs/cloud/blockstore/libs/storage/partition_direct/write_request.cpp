@@ -20,12 +20,12 @@ TBaseWriteRequestExecutor::TBaseWriteRequestExecutor(
     TChildLogTitle logTitle,
     const TVChunkConfig& vChunkConfig,
     IDirectBlockGroupPtr directBlockGroup,
-    std::shared_ptr<TWriteRequestBundle> bundle)
+    TWriteRequestBundle* bundle)
     : ActorSystem(actorSystem)
     , LogTitle(std::move(logTitle))
     , VChunkConfig(vChunkConfig)
     , DirectBlockGroup(std::move(directBlockGroup))
-    , Bundle(std::move(bundle))
+    , Bundle(bundle)
     , HedgingDelay(DirectBlockGroup->GetOracle()->GetWriteHedgingDelay())
     , RequestTimeout(DirectBlockGroup->GetOracle()->GetWriteRequestTimeout())
 {}
@@ -43,9 +43,58 @@ TBaseWriteRequestExecutor::~TBaseWriteRequestExecutor()
     }
 }
 
-bool TBaseWriteRequestExecutor::IsAlreadyReplied() const
+void TBaseWriteRequestExecutor::Run()
 {
-    return IsReplied;
+    Bundle->GetSpan().Event("Run");
+    ScheduleRequestTimeoutCallback();
+    ScheduleHedging();
+}
+
+void TBaseWriteRequestExecutor::OnWriteToPBufferResponse(
+    THostIndex host,
+    const TDBGWriteBlocksResponse& response)
+{
+    LOG_DEBUG(
+        *ActorSystem,
+        NKikimrServices::NBS_PARTITION,
+        "%s OnWriteToPBufferResponse. %s %s",
+        LogTitle.GetWithTime().c_str(),
+        PrintHostIndex(host).c_str(),
+        FormatError(response.Error).c_str());
+
+    if (!HasError(response.Error)) {
+        if (ShouldReplyOk(THostMask::MakeOne(host))) {
+            ReplyOrNotifyBelated(MakeError(S_OK), THostMask::MakeOne(host));
+        }
+        Bundle->GetHostSpan(host).EndOk();
+        return;
+    }
+
+    const auto candidates =
+        VChunkConfig.GetSecondaryPBuffers().Exclude(RequestedWrites);
+    if (auto next = candidates.First()) {
+        LOG_WARN(
+            *ActorSystem,
+            NKikimrServices::NBS_PARTITION,
+            "%s Try hand-off %s due to %s on %s",
+            LogTitle.GetWithTime().c_str(),
+            PrintHostIndex(*next).c_str(),
+            FormatError(response.Error).c_str(),
+            PrintHostIndex(host).c_str());
+
+        SendWriteRequest(*next);
+    } else {
+        LOG_ERROR(
+            *ActorSystem,
+            NKikimrServices::NBS_PARTITION,
+            "%s All hand-offs attempts are over. %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(response.Error).c_str());
+
+        ReplyOrNotifyBelated(response.Error, {});
+    }
+
+    Bundle->GetHostSpan(host).EndError(FormatError(response.Error));
 }
 
 TString TBaseWriteRequestExecutor::ExtendedDebugState() const
@@ -118,74 +167,12 @@ void TBaseWriteRequestExecutor::SendWriteRequest(THostIndex host)
         LogTitle.GetWithTime().c_str(),
         PrintHostIndex(host).c_str());
 
-    auto span = DirectBlockGroup->CreateChildSpan(
-        Bundle->GetSpan().GetTraceId(),
-        "TBaseWriteRequestExecutor");
-    if (span) {
-        span->Attribute("HostIndex", ToString(host));
-    }
+    auto& span = Bundle->GetHostSpan(host);
+    span.Attribute("HostIndex", static_cast<i64>(host));
 
     RequestedWrites.Set(host);
 
-    auto future = DirectBlockGroup->WriteBlocksToPBuffer(
-        VChunkConfig.GetVChunkIndex(),
-        host,
-        Bundle->GetLsn(),
-        Bundle->GetVChunkRange(),
-        Bundle->GetSgList(),
-        span ? span->GetTraceId() : NWilson::TTraceId());
-
-    future.Subscribe(
-        [self = shared_from_this(), host, span = std::move(span)]           //
-        (const NThreading::TFuture<TDBGWriteBlocksResponse>& f) mutable {   //
-            self->OnWriteResponse(host, f.GetValue(), std::move(span));
-        });
-}
-
-void TBaseWriteRequestExecutor::OnWriteResponse(
-    THostIndex host,
-    const TDBGWriteBlocksResponse& response,
-    std::shared_ptr<NWilson::TSpan> span)
-{
-    LOG_DEBUG(
-        *ActorSystem,
-        NKikimrServices::NBS_PARTITION,
-        "%s OnWriteResponse. HostIndex: %u, Error: %s",
-        LogTitle.GetWithTime().c_str(),
-        PrintHostIndex(host).c_str(),
-        FormatError(response.Error).c_str());
-
-    if (!HasError(response.Error)) {
-        CompletedWrites.Set(host);
-        if (ShouldReplyOk()) {
-            ReplyOrNotifyBelated(MakeError(S_OK), THostMask::MakeOne(host));
-        }
-        return;
-    }
-
-    const auto candidates =
-        VChunkConfig.GetSecondaryPBuffers().Exclude(RequestedWrites);
-    if (auto next = candidates.First()) {
-        LOG_WARN(
-            *ActorSystem,
-            NKikimrServices::NBS_PARTITION,
-            "%s Try hand-off. %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(response.Error).c_str());
-
-        SendWriteRequest(*next);
-    } else {
-        LOG_ERROR(
-            *ActorSystem,
-            NKikimrServices::NBS_PARTITION,
-            "%s All hand-offs attempts are over. %s",
-            LogTitle.GetWithTime().c_str(),
-            FormatError(response.Error).c_str());
-
-        ReplyOrNotifyBelated(response.Error, {});
-
-        auto ender = TEndSpanWithError(std::move(span), response.Error);
-    }
+    DirectBlockGroup->WriteBlocksToPBuffer(Bundle->AsShared(), host);
 }
 
 void TBaseWriteRequestExecutor::ScheduleRequestTimeoutCallback()
@@ -221,8 +208,14 @@ void TBaseWriteRequestExecutor::RequestTimeoutCallback()
     ReplyOrNotifyBelated(MakeError(E_TIMEOUT, "Write request timeout"), {});
 }
 
-bool TBaseWriteRequestExecutor::ShouldReplyOk() const
+bool TBaseWriteRequestExecutor::IsAlreadyReplied() const
 {
+    return IsReplied;
+}
+
+bool TBaseWriteRequestExecutor::ShouldReplyOk(THostMask newCompletions)
+{
+    CompletedWrites = CompletedWrites.Include(newCompletions);
     return CompletedWrites.Count() >= QuorumDirectBlockGroupHostCount;
 }
 
@@ -238,12 +231,12 @@ TBaseWriteRequestExecutorPtr CreateWriteRequestExecutor(
     const TLogTitle& logTitle,
     const TVChunkConfig& vChunkConfig,
     IDirectBlockGroupPtr directBlockGroup,
-    std::shared_ptr<TWriteRequestBundle> bundle)
+    TWriteRequestBundle* bundle)
 {
-    EWriteMode writeMode = directBlockGroup->GetOracle()->GetWriteMode();
-    switch (writeMode) {
+    TBaseWriteRequestExecutorPtr result;
+    switch (directBlockGroup->GetOracle()->GetWriteMode()) {
         case EWriteMode::PBufferReplication:
-            return std::make_shared<TWriteWithPbReplicationRequestExecutor>(
+            result = std::make_shared<TWriteWithPbReplicationRequestExecutor>(
                 actorSystem,
                 logTitle.GetChildWithTags(
                     GetCycleCount(),
@@ -254,17 +247,20 @@ TBaseWriteRequestExecutorPtr CreateWriteRequestExecutor(
                 bundle);
             break;
         case EWriteMode::DirectPBuffersFilling:
-            return std::make_shared<TWriteWithDirectReplicationRequestExecutor>(
-                actorSystem,
-                logTitle.GetChildWithTags(
-                    GetCycleCount(),
-                    {{"t", "d-write"},
-                     {"r", bundle->GetVChunkRange().Print()}}),
-                vChunkConfig,
-                std::move(directBlockGroup),
-                bundle);
+            result =
+                std::make_shared<TWriteWithDirectReplicationRequestExecutor>(
+                    actorSystem,
+                    logTitle.GetChildWithTags(
+                        GetCycleCount(),
+                        {{"t", "d-write"},
+                         {"r", bundle->GetVChunkRange().Print()}}),
+                    vChunkConfig,
+                    std::move(directBlockGroup),
+                    bundle);
             break;
     }
+    bundle->AttachExecutor(result);
+    return result;
 }
 
 }   // namespace NYdb::NBS::NBlockStore::NStorage::NPartitionDirect

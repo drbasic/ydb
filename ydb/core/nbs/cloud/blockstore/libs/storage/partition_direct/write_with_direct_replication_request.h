@@ -15,7 +15,7 @@ public:
         TChildLogTitle logTitle,
         const TVChunkConfig& vChunkConfig,
         IDirectBlockGroupPtr directBlockGroup,
-        std::shared_ptr<TWriteRequestBundle> bundle);
+        TWriteRequestBundle* bundle);
 
     ~TWriteWithDirectReplicationRequestExecutor() override = default;
 

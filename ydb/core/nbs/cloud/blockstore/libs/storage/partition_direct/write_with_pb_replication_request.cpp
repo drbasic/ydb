@@ -57,13 +57,13 @@ TWriteWithPbReplicationRequestExecutor::TWriteWithPbReplicationRequestExecutor(
     TChildLogTitle logTitle,
     const TVChunkConfig& vChunkConfig,
     IDirectBlockGroupPtr directBlockGroup,
-    std::shared_ptr<TWriteRequestBundle> bundle)
+    TWriteRequestBundle* bundle)
     : TBaseWriteRequestExecutor(
           actorSystem,
           std::move(logTitle),
           vChunkConfig,
           directBlockGroup,
-          std::move(bundle))
+          bundle)
     , PbufferReplyTimeout(
           directBlockGroup->GetOracle()->GetPBufferReplyTimeout())
 {
@@ -73,9 +73,7 @@ TWriteWithPbReplicationRequestExecutor::TWriteWithPbReplicationRequestExecutor(
 
 void TWriteWithPbReplicationRequestExecutor::Run()
 {
-    Bundle->GetSpan().Event("Run");
-    ScheduleRequestTimeoutCallback();
-    ScheduleHedging();
+    TBaseWriteRequestExecutor::Run();
 
     SendWriteRequestToManyPBuffers(VChunkConfig.GetDesiredPBuffers().Hosts());
 }
@@ -159,9 +157,7 @@ void TWriteWithPbReplicationRequestExecutor::OnWriteToManyPBuffersResponse(
         }
     }
 
-    CompletedWrites = CompletedWrites.Include(completedWritesOfCurrentResponse);
-
-    if (ShouldReplyOk()) {
+    if (ShouldReplyOk(completedWritesOfCurrentResponse)) {
         ReplyOrNotifyBelated(MakeError(S_OK), completedWritesOfCurrentResponse);
         return;
     }
@@ -230,40 +226,33 @@ void TWriteWithPbReplicationRequestExecutor::TryToSendDirectWrites(bool isHedge)
     }
 }
 
-void TWriteWithPbReplicationRequestExecutor::OnWriteResponse(
+void TWriteWithPbReplicationRequestExecutor::OnWriteToPBufferResponse(
     THostIndex host,
-    const TDBGWriteBlocksResponse& response,
-    std::shared_ptr<NWilson::TSpan> span)
+    const TDBGWriteBlocksResponse& response)
 {
-    LOG_DEBUG(
+    LOG_LOG(
         *ActorSystem,
+        HasError(response.Error) ? NActors::NLog::PRI_WARN
+                                 : NActors::NLog::PRI_DEBUG,
         NKikimrServices::NBS_PARTITION,
-        "%s OnWriteToManyPBuffersResponse DirectResponse on %s",
+        "%s DirectResponse from %s %s",
         LogTitle.GetWithTime().c_str(),
-        PrintHostIndex(host).c_str());
+        PrintHostIndex(host).c_str(),
+        FormatError(response.Error).c_str());
 
     ActiveDirectWrites.Reset(host);
 
     if (!HasError(response.Error)) {
-        CompletedWrites.Set(host);
-        if (ShouldReplyOk()) {
+        if (ShouldReplyOk(THostMask::MakeOne(host))) {
             ReplyOrNotifyBelated(MakeError(S_OK), THostMask::MakeOne(host));
         }
+        Bundle->GetHostSpan(host).EndOk();
         return;
     }
     // There is no necessity of vchunk's notifying in case of error.
     // Notifying has sense only for CompletedWrites.
     // RequestedWrites will be registered in any case.
-
-    LOG_WARN(
-        *ActorSystem,
-        NKikimrServices::NBS_PARTITION,
-        "%s OnWriteToManyPBuffersResponse DirectResponse %s on %s",
-        LogTitle.GetWithTime().c_str(),
-        FormatError(response.Error).c_str(),
-        PrintHostIndex(host).c_str());
-
-    auto spanEnder = TEndSpanWithError(std::move(span), response.Error);
+    Bundle->GetHostSpan(host).EndError(FormatError(response.Error));
 
     TryToSendDirectWrites(false);
 }

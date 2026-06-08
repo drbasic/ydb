@@ -54,9 +54,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
     {
         Init();
 
-        auto writeRequest = CreateDirectReplicationExecutor(
+        auto bundle = RunDirectReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
         UNIT_ASSERT_VALUES_EQUAL(3, DirectWritePromises.size());
@@ -74,9 +73,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
     {
         Init();
 
-        auto writeRequest = CreateDirectReplicationExecutor(
+        auto bundle = RunDirectReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
         UNIT_ASSERT_VALUES_EQUAL(2, Scheduled.size());
@@ -104,32 +102,25 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
         TMap<THostIndex, TPromise<TDBGWriteBlocksResponse>>
             writePBufferPromises;
         DirectBlockGroup->WriteBlocksToPBufferHandler = [&]   //
-            (ui32 vChunkIndex,
-             THostIndex hostIndex,
-             ui64 lsn,
-             TBlockRange64 range,
-             const TGuardedSgList& guardedSglist,
-             const NWilson::TTraceId& traceId)
+            (TWriteRequestBundlePtr bundle, THostIndex hostIndex) -> void
         {
-            Y_UNUSED(traceId);
-            Y_UNUSED(guardedSglist);
-
-            UNIT_ASSERT_C(UserLsn, lsn);
+            UNIT_ASSERT_C(UserLsn, bundle->GetLsn());
             UNIT_ASSERT_VALUES_EQUAL(
                 VChunkConfig.GetVChunkIndex(),
-                vChunkIndex);
-            UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, range);
+                bundle->GetVChunkIndex());
+            UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, bundle->GetVChunkRange());
 
-            writePBufferPromises.emplace(
-                hostIndex,
-                NewPromise<TDBGWriteBlocksResponse>());
-
-            return writePBufferPromises[hostIndex].GetFuture();
+            auto promise = NewPromise<TDBGWriteBlocksResponse>();
+            promise.GetFuture().Subscribe(
+                [bundle = std::move(bundle), hostIndex]   //
+                (const TFuture<TDBGWriteBlocksResponse>& future) {
+                    bundle->WriteToPBufferResult(hostIndex, future.GetValue());
+                });
+            writePBufferPromises.emplace(hostIndex, std::move(promise));
         };
 
-        auto writeRequest = CreateDirectReplicationExecutor(
+        auto bundle = RunDirectReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
         UNIT_ASSERT_VALUES_EQUAL(3, writePBufferPromises.size());
 
         // Run hedge callback.
@@ -166,32 +157,25 @@ Y_UNIT_TEST_SUITE(TWriteRequestTest)
         TMap<THostIndex, TPromise<TDBGWriteBlocksResponse>>
             writePBufferPromises;
         DirectBlockGroup->WriteBlocksToPBufferHandler = [&]   //
-            (ui32 vChunkIndex,
-             THostIndex hostIndex,
-             ui64 lsn,
-             TBlockRange64 range,
-             const TGuardedSgList& guardedSglist,
-             const NWilson::TTraceId& traceId)
+            (TWriteRequestBundlePtr bundle, THostIndex hostIndex) -> void
         {
-            Y_UNUSED(traceId);
-            Y_UNUSED(guardedSglist);
-
-            UNIT_ASSERT_C(UserLsn, lsn);
+            UNIT_ASSERT_C(UserLsn, bundle->GetLsn());
             UNIT_ASSERT_VALUES_EQUAL(
                 VChunkConfig.GetVChunkIndex(),
-                vChunkIndex);
-            UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, range);
+                bundle->GetVChunkIndex());
+            UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, bundle->GetVChunkRange());
 
-            writePBufferPromises.emplace(
-                hostIndex,
-                NewPromise<TDBGWriteBlocksResponse>());
-
-            return writePBufferPromises[hostIndex].GetFuture();
+            auto promise = NewPromise<TDBGWriteBlocksResponse>();
+            promise.GetFuture().Subscribe(
+                [bundle = std::move(bundle), hostIndex]   //
+                (const TFuture<TDBGWriteBlocksResponse>& future) {
+                    bundle->WriteToPBufferResult(hostIndex, future.GetValue());
+                });
+            writePBufferPromises.emplace(hostIndex, std::move(promise));
         };
 
-        auto writeRequest = CreateDirectReplicationExecutor(
+        auto bundle = RunDirectReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         UNIT_ASSERT_VALUES_EQUAL(3, writePBufferPromises.size());
         writePBufferPromises[0].SetValue(   // Primary0
@@ -234,10 +218,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
             GetManyPBuffersHandlerWithImmediateOkResponse();
 
         // prepare and call main request
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-
-        writeRequest->Run();
 
         UNIT_ASSERT_VALUES_EQUAL(true, WriteClient->Response.has_value());
 
@@ -261,9 +243,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
         Init();
 
         // prepare and call main request
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         // as response is hanging, there is no results
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
@@ -297,9 +278,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
         Init();
 
         // prepare and call main request
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         // as response is hanging, there is no results
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
@@ -333,9 +313,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
         Init();
 
         // prepare and call main request
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         // as response is hanging, there is no results
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
@@ -384,9 +363,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
         Init();
 
         // prepare and call main request
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         // as response is hanging, there is no results
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
@@ -432,9 +410,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
         Init();
 
         // prepare and call main request
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         // as response is hanging, there is no results
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
@@ -481,10 +458,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
     {
         Init();
 
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-
-        writeRequest->Run();
 
         ManyPBufferCallback(CreateDBGErrorResponse());
         UNIT_ASSERT_VALUES_EQUAL(false, WriteClient->Response.has_value());
@@ -505,9 +480,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
     {
         Init();
 
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         {
             TDBGWriteBlocksToManyPBuffersResponse partResponse;
@@ -543,9 +517,8 @@ Y_UNIT_TEST_SUITE(TWriteRequestWithPBufferReplicationTest)
     {
         Init();
 
-        auto writeRequest = CreatePBufferReplicationExecutor(
+        auto bundle = RunPBufferReplicationRequest(
             MakeWriteTestRequestHeaders(Range, BlockSize));
-        writeRequest->Run();
 
         //  call hedge mechanism
         RunScheduledHedge();

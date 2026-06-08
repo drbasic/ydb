@@ -22,21 +22,21 @@ public:
         TChildLogTitle logTitle,
         const TVChunkConfig& vChunkConfig,
         IDirectBlockGroupPtr directBlockGroup,
-        std::shared_ptr<TWriteRequestBundle> bundle);
+        TWriteRequestBundle* bundle);
 
     ~TWriteWithPbReplicationRequestExecutor() override = default;
 
     void Run() override;
+
+    void OnWriteToPBufferResponse(
+        THostIndex host,
+        const TDBGWriteBlocksResponse& response) override;
 
 private:
     void SendWriteRequestToManyPBuffers(TVector<THostIndex> hosts);
     void OnWriteToManyPBuffersResponse(
         const TDBGWriteBlocksToManyPBuffersResponse& response);
     void TryToSendDirectWrites(bool isHedge);
-    void OnWriteResponse(
-        THostIndex hosts,
-        const TDBGWriteBlocksResponse& response,
-        std::shared_ptr<NWilson::TSpan> span) override;
 
     void ScheduleHedging() override;
     void SendDirectWriteRequest(THostIndex host);

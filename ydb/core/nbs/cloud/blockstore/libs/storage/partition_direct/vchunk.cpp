@@ -176,7 +176,7 @@ TFuture<TWriteBlocksLocalResponse> TVChunk::WriteBlocksLocal(
         std::move(request),
         traceId,
         std::move(callContext),
-        vchunkRange);
+        VChunkConfig.GetVChunkIndex());
 
     bundle->GetSpan().Attribute("VChunkIndex", VChunkConfig.GetVChunkIndex());
 
@@ -502,7 +502,7 @@ void TVChunk::DoWriteBlocksLocal(std::shared_ptr<TWriteRequestBundle> bundle)
         LogTitle,
         VChunkConfig,
         DirectBlockGroup,
-        std::move(bundle));
+        bundle.get());
 
     ++InflightWritesCount;
     writeExecutor->Run();

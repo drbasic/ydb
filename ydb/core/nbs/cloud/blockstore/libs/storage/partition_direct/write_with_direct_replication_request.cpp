@@ -19,20 +19,18 @@ TWriteWithDirectReplicationRequestExecutor::
         TChildLogTitle logTitle,
         const TVChunkConfig& vChunkConfig,
         IDirectBlockGroupPtr directBlockGroup,
-        std::shared_ptr<TWriteRequestBundle> bundle)
+        TWriteRequestBundle* bundle)
     : TBaseWriteRequestExecutor(
           actorSystem,
           std::move(logTitle),
           vChunkConfig,
           std::move(directBlockGroup),
-          std::move(bundle))
+          bundle)
 {}
 
 void TWriteWithDirectReplicationRequestExecutor::Run()
 {
-    Bundle->GetSpan().Event("Run");
-    ScheduleRequestTimeoutCallback();
-    ScheduleHedging();
+    TBaseWriteRequestExecutor::Run();
 
     for (auto host: VChunkConfig.GetDesiredPBuffers()) {
         SendWriteRequest(host);

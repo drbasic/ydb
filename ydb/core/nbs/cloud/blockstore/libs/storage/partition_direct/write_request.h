@@ -23,7 +23,8 @@ namespace NYdb::NBS::NBlockStore::NStorage::NPartitionDirect {
 ////////////////////////////////////////////////////////////////////////////////
 
 class TBaseWriteRequestExecutor
-    : public std::enable_shared_from_this<TBaseWriteRequestExecutor>
+    : public IWriteRequestExecutor
+    , public std::enable_shared_from_this<TBaseWriteRequestExecutor>
 {
 public:
     TBaseWriteRequestExecutor(
@@ -31,13 +32,16 @@ public:
         TChildLogTitle logTitle,
         const TVChunkConfig& vChunkConfig,
         IDirectBlockGroupPtr directBlockGroup,
-        std::shared_ptr<TWriteRequestBundle> bundle);
+        TWriteRequestBundle* bundle);
 
-    virtual ~TBaseWriteRequestExecutor();
+    ~TBaseWriteRequestExecutor() override;
 
-    [[nodiscard]] bool IsAlreadyReplied() const;
+    virtual void Run();
 
-    virtual void Run() = 0;
+    // IWriteToPBufferClient implementation
+    void OnWriteToPBufferResponse(
+        THostIndex host,
+        const TDBGWriteBlocksResponse& response) override;
 
 protected:
     void ReplyOrNotifyBelated(
@@ -48,14 +52,11 @@ protected:
 
     void SendWriteRequest(THostIndex host);
 
-    virtual void OnWriteResponse(
-        THostIndex host,
-        const TDBGWriteBlocksResponse& response,
-        std::shared_ptr<NWilson::TSpan> span);
-
     void ScheduleRequestTimeoutCallback();
     void RequestTimeoutCallback();
-    [[nodiscard]] bool ShouldReplyOk() const;
+
+    [[nodiscard]] bool IsAlreadyReplied() const;
+    [[nodiscard]] bool ShouldReplyOk(THostMask newCompletions);
 
     TVector<THostIndex> GetAvailableHandOffHosts() const;
     virtual TString ExtendedDebugState() const;
@@ -66,7 +67,7 @@ protected:
     const TChildLogTitle LogTitle;
     const TVChunkConfig VChunkConfig;
     const IDirectBlockGroupPtr DirectBlockGroup;
-    const TWriteRequestBundlePtr Bundle;
+    TWriteRequestBundle* const Bundle;
     const TDuration HedgingDelay;
     const TDuration RequestTimeout;
 
@@ -86,7 +87,7 @@ TBaseWriteRequestExecutorPtr CreateWriteRequestExecutor(
     const TLogTitle& logTitle,
     const TVChunkConfig& vChunkConfig,
     IDirectBlockGroupPtr directBlockGroup,
-    std::shared_ptr<TWriteRequestBundle> bundle);
+    TWriteRequestBundle* bundle);
 
 ////////////////////////////////////////////////////////////////////////////////
 

@@ -37,7 +37,10 @@ public:
         std::shared_ptr<TWriteBlocksLocalRequest> request,
         const NWilson::TTraceId& traceId,
         TCallContextPtr callContext,
+        ui32 vchunkIndex,
         TBlockRange64 vchunkRange);
+
+    void AttachExecutor(IWriteRequestExecutorPtr writeRequestExecutor);
 
     // Respond via WriteClient to VChunk.
     void Reply(
@@ -50,18 +53,30 @@ public:
     // Respond via Promise to FastPathService.
     void SendFinalReply(TWriteBlocksLocalResponse response);
 
+    // Response form DirectBlockGroup
+    void WriteToPBufferResult(
+        THostIndex host,
+        const TDBGWriteBlocksResponse& response);
+
     NThreading::TFuture<TWriteBlocksLocalResponse> GetFuture();
     NWilson::TSpan& GetSpan();
+    NWilson::TSpan& GetHostSpan(THostIndex host);
+    ui32 GetVChunkIndex() const;
     TBlockRange64 GetVChunkRange() const;
     void SetLsn(ui64 lsn);
     ui64 GetLsn() const;
     TGuardedSgList& GetSgList();
 
+    TWriteRequestBundlePtr AsShared();
+
 private:
     IWriteClientWeakPtr WriteClient;
+    IWriteRequestExecutorPtr WriteRequestExecutor;
     std::shared_ptr<TWriteBlocksLocalRequest> Request;
     NWilson::TSpan Span;
+    std::array<NWilson::TSpan, MaxHostCount> HostSpans;
     TCallContextPtr CallContext;
+    ui32 VChunkIndex = 0;
     TBlockRange64 VChunkRange;
     ui64 Lsn = 0;
 
@@ -79,6 +94,15 @@ struct IWriteClient
     virtual void OnBelatedWriteBlocksResponse(
         std::shared_ptr<TWriteRequestBundle> bundle,
         THostMask hosts) = 0;
+};
+
+struct IWriteRequestExecutor
+{
+    virtual ~IWriteRequestExecutor() = default;
+
+    virtual void OnWriteToPBufferResponse(
+        THostIndex host,
+        const TDBGWriteBlocksResponse& response) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

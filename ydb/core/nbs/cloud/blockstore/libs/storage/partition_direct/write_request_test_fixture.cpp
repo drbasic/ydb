@@ -39,23 +39,19 @@ void TWriteRequestTestFixture::Init()
     RangeData = GenerateRandomString(BlockSize * Range.Size());
 
     DirectBlockGroup->WriteBlocksToPBufferHandler = [this]   //
-        (ui32 vChunkIndex,
-         ui8 hostIndex,
-         ui64 lsn,
-         TBlockRange64 range,
-         const TGuardedSgList& guardedSglist,
-         const NWilson::TTraceId& traceId)
+        (TWriteRequestBundlePtr bundle, THostIndex hostIndex)
     {
-        Y_UNUSED(hostIndex, lsn, traceId, guardedSglist);
+        UNIT_ASSERT_VALUES_EQUAL(
+            VChunkConfig.GetVChunkIndex(),
+            bundle->GetVChunkIndex());
+        UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, bundle->GetVChunkRange());
 
-        UNIT_ASSERT_VALUES_EQUAL(VChunkConfig.GetVChunkIndex(), vChunkIndex);
-        UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, range);
-
-        TPromise<TDBGWriteBlocksResponse> response(
-            NewPromise<TDBGWriteBlocksResponse>());
-        DirectWritePromises.push_back(std::move(response));
-
-        return DirectWritePromises.back().GetFuture();
+        auto promise = NewPromise<TDBGWriteBlocksResponse>();
+        promise.GetFuture().Subscribe(
+            [bundle = std::move(bundle), hostIndex]   //
+            (const TFuture<TDBGWriteBlocksResponse>& future)
+            { bundle->WriteToPBufferResult(hostIndex, future.GetValue()); });
+        DirectWritePromises.push_back(std::move(promise));
     };
 
     DirectBlockGroup->WriteBlocksToManyPBuffersHandler =
@@ -180,9 +176,8 @@ TWriteRequestTestFixture::GetManyPBuffersHandlerWithImmediateOkResponse()
     return result;
 }
 
-std::shared_ptr<TBaseWriteRequestExecutor>
-TWriteRequestTestFixture::CreatePBufferReplicationExecutor(
-    TRequestHeaders headers)
+std::shared_ptr<TWriteRequestBundle>
+TWriteRequestTestFixture::RunPBufferReplicationRequest(TRequestHeaders headers)
 {
     auto originalRequest =
         std::make_shared<TWriteBlocksLocalRequest>(std::move(headers));
@@ -194,6 +189,7 @@ TWriteRequestTestFixture::CreatePBufferReplicationExecutor(
         std::move(originalRequest),
         NWilson::TTraceId(),
         MakeIntrusive<TCallContext>(),
+        VChunkConfig.GetVChunkIndex(),
         Range);
     bundle->SetLsn(UserLsn);
 
@@ -204,14 +200,15 @@ TWriteRequestTestFixture::CreatePBufferReplicationExecutor(
         LogTitle.GetChild(GetCycleCount()),
         VChunkConfig,
         DirectBlockGroup,
-        std::move(bundle));
+        bundle.get());
 
-    return request;
+    bundle->AttachExecutor(request);
+    request->Run();
+    return bundle;
 }
 
-std::shared_ptr<TBaseWriteRequestExecutor>
-TWriteRequestTestFixture::CreateDirectReplicationExecutor(
-    TRequestHeaders headers)
+std::shared_ptr<TWriteRequestBundle>
+TWriteRequestTestFixture::RunDirectReplicationRequest(TRequestHeaders headers)
 {
     auto originalRequest =
         std::make_shared<TWriteBlocksLocalRequest>(std::move(headers));
@@ -223,19 +220,21 @@ TWriteRequestTestFixture::CreateDirectReplicationExecutor(
         std::move(originalRequest),
         NWilson::TTraceId(),
         MakeIntrusive<TCallContext>(),
+        VChunkConfig.GetVChunkIndex(),
         Range);
     bundle->SetLsn(UserLsn);
-
-    WriteClient->Response.reset();
 
     auto request = std::make_shared<TWriteWithDirectReplicationRequestExecutor>(
         Runtime->GetActorSystem(0),
         LogTitle.GetChild(GetCycleCount()),
         VChunkConfig,
         DirectBlockGroup,
-        std::move(bundle));
+        bundle.get());
 
-    return request;
+    bundle->AttachExecutor(request);
+    request->Run();
+
+    return bundle;
 }
 
 void TWriteRequestTestFixture::RunScheduledHedge()

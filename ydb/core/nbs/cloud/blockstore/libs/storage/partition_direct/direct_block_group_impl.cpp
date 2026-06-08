@@ -411,14 +411,9 @@ TDirectBlockGroup::WriteBlocksToDDisk(
     return result;
 }
 
-NThreading::TFuture<TDBGWriteBlocksResponse>
-TDirectBlockGroup::WriteBlocksToPBuffer(
-    ui32 vChunkIndex,
-    THostIndex hostIndex,
-    ui64 lsn,
-    TBlockRange64 range,
-    const TGuardedSgList& guardedSglist,
-    const NWilson::TTraceId& traceId)
+void TDirectBlockGroup::WriteBlocksToPBuffer(
+    TWriteRequestBundlePtr bundle,
+    THostIndex hostIndex)
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
@@ -428,30 +423,33 @@ TDirectBlockGroup::WriteBlocksToPBuffer(
     const auto startAt = TMonotonic::Now();
 
     if (!Initialized) {
-        return MakeFuture<TDBGWriteBlocksResponse>(
-            {.Error =
-                 MakeError(E_REJECTED, "Connections are not established")});
+        bundle->WriteToPBufferResult(
+            hostIndex,
+            TDBGWriteBlocksResponse{
+                .Error =
+                    MakeError(E_REJECTED, "Connections are not established")});
+        return;
     }
 
-    auto childSpan =
-        CreateChildSpan(traceId, "NbsPartition.WriteBlocksToPBuffer");
+    auto childSpan = CreateChildSpan(
+        bundle->GetHostSpan(hostIndex).GetTraceId(),
+        "NbsPartition.WriteBlocksToPBuffer");
 
-    auto promise = NewPromise<TDBGWriteBlocksResponse>();
-    auto result = promise.GetFuture();
     OnRequest(hostIndex, EOperation::WriteToPBuffer);
+
     auto future = StorageTransport->WriteToPBuffer(
         PBufferConnections[hostIndex].HostConnection,
         NKikimr::NDDisk::TBlockSelector(
-            vChunkIndex,
-            range.Start * DefaultBlockSize,
-            range.Size() * DefaultBlockSize),
-        lsn,
+            bundle->GetVChunkIndex(),
+            bundle->GetVChunkRange().Start * DefaultBlockSize,
+            bundle->GetVChunkRange().Size() * DefaultBlockSize),
+        bundle->GetLsn(),
         NKikimr::NDDisk::TWriteInstruction(0),
-        guardedSglist,
+        bundle->GetSgList(),
         childSpan.get());
     future.Subscribe(
         [weakSelf = weak_from_this(),
-         promise = std::move(promise),
+         bundle = std::move(bundle),
          childSpan = std::move(childSpan),
          hostIndex,
          startAt,
@@ -463,7 +461,7 @@ TDirectBlockGroup::WriteBlocksToPBuffer(
 
             executor->ExecuteSimple(
                 [weakSelf,
-                 promise = std::move(promise),
+                 bundle = std::move(bundle),
                  childSpan = std::move(childSpan),
                  hostIndex,
                  startAt,
@@ -483,11 +481,11 @@ TDirectBlockGroup::WriteBlocksToPBuffer(
                             error);
                     }
 
-                    promise.SetValue(
+                    bundle->WriteToPBufferResult(
+                        hostIndex,
                         TDBGWriteBlocksResponse{.Error = std::move(error)});
                 });
         });
-    return result;
 }
 
 void TDirectBlockGroup::WriteBlocksToManyPBuffers(

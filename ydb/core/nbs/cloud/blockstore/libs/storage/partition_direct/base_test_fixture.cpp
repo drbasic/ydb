@@ -115,28 +115,24 @@ void TBaseFixture::Init()
     };
 
     DirectBlockGroup->WriteBlocksToPBufferHandler = [&]   //
-        (ui32 vChunkIndex,
-         THostIndex hostIndex,
-         ui64 lsn,
-         TBlockRange64 range,
-         const TGuardedSgList& guardedSglist,
-         const NWilson::TTraceId& traceId)
+        (TWriteRequestBundlePtr bundle, THostIndex hostIndex) -> void
     {
-        Y_UNUSED(traceId);
         Y_UNUSED(hostIndex);
-        Y_UNUSED(lsn);
 
-        UNIT_ASSERT_VALUES_EQUAL(VChunkConfig.GetVChunkIndex(), vChunkIndex);
-        UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, range);
+        UNIT_ASSERT_VALUES_EQUAL(
+            VChunkConfig.GetVChunkIndex(),
+            bundle->GetVChunkIndex());
+        UNIT_ASSERT_VALUES_EQUAL(ExpectedRange, bundle->GetVChunkRange());
 
-        const ui64 offsetBlocks = range.Start - ExpectedRange.Start;
+        const ui64 offsetBlocks =
+            bundle->GetVChunkRange().Start - ExpectedRange.Start;
         const ui64 offsetBytes = offsetBlocks * BlockSize;
-        const ui64 sizeBytes = range.Size() * BlockSize;
+        const ui64 sizeBytes = bundle->GetVChunkRange().Size() * BlockSize;
 
         TString copiedData;
         copiedData.resize(sizeBytes);
         SgListCopy(
-            guardedSglist.Acquire().Get(),
+            bundle->GetSgList().Acquire().Get(),
             TBlockDataRef{copiedData.data(), copiedData.size()});
 
         TString expectedData =
@@ -145,9 +141,12 @@ void TBaseFixture::Init()
 
         auto promise = NewPromise<TDBGWriteBlocksResponse>();
         auto future = promise.GetFuture();
+        future.Subscribe(
+            [bundle = std::move(bundle), hostIndex]   //
+            (const TFuture<TDBGWriteBlocksResponse>& future)
+            { bundle->WriteToPBufferResult(hostIndex, future.GetValue()); });
         auto guard = TGuard(PromisesGuard);
         WritePromises.push_back(std::move(promise));
-        return future;
     };
 
     DirectBlockGroup->WriteBlocksToDDiskHandler = [&]   //

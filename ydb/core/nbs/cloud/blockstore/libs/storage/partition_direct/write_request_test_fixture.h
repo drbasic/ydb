@@ -53,10 +53,10 @@ struct TWriteRequestTestFixture: public TBaseFixture
     TDirectBlockGroupMock::TWriteBlocksToManyPBuffersHandler
     GetManyPBuffersHandlerWithImmediateOkResponse();
 
-    std::shared_ptr<TBaseWriteRequestExecutor> CreatePBufferReplicationExecutor(
+    std::shared_ptr<TWriteRequestBundle> RunPBufferReplicationRequest(
         TRequestHeaders headers);
 
-    std::shared_ptr<TBaseWriteRequestExecutor> CreateDirectReplicationExecutor(
+    std::shared_ptr<TWriteRequestBundle> RunDirectReplicationRequest(
         TRequestHeaders headers);
 
     void RunScheduledHedge();

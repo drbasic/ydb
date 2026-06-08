@@ -80,13 +80,9 @@ public:
         const TGuardedSgList& guardedSglist,
         const NWilson::TTraceId& traceId) override;
 
-    NThreading::TFuture<TDBGWriteBlocksResponse> WriteBlocksToPBuffer(
-        ui32 vChunkIndex,
-        THostIndex hostIndex,
-        ui64 lsn,
-        TBlockRange64 range,
-        const TGuardedSgList& guardedSglist,
-        const NWilson::TTraceId& traceId) override;
+    void WriteBlocksToPBuffer(
+        TWriteRequestBundlePtr bundle,
+        THostIndex hostIndex) override;
 
     void WriteBlocksToManyPBuffers(
         ui32 vChunkIndex,
