@@ -2055,6 +2055,7 @@ TDbgSnapshot TDirectBlockGroup::DoBuildMonSnapshot() const
             for (THostIndex host = 0; host < GetHostCount(); ++host) {
                 hostsStat[host].AheadBlocks += vChunk->GetAheadBlocks(host);
                 hostsStat[host].BehindBlocks += vChunk->GetBehindBlocks(host);
+                hostsStat[host].FreshBlocks += vChunk->GetFreshBlocks(host);
             }
         }
     }

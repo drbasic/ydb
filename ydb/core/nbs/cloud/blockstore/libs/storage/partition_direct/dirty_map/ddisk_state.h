@@ -81,7 +81,9 @@ public:
     [[nodiscard]] std::optional<TBlockRange64> GetFreshRange() const;
     void RangeSynced(TBlockRange64 range);
 
+    // Returns segment count and block count;
     [[nodiscard]] TCountAndSize GetAheadSegmentsStat() const;
+    // Returns segment count and block count;
     [[nodiscard]] TCountAndSize GetBehindSegmentsStat() const;
 
     void UpdateWatermarkDebugOnly(ui64 blockCount);

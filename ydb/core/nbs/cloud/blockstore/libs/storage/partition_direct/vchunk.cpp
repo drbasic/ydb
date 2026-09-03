@@ -316,6 +316,13 @@ TCountAndSize TVChunk::GetBehindBlocks(THostIndex hostIndex) const
     return BlocksDirtyMap->GetBehindBlocks(hostIndex);
 }
 
+TCountAndSize TVChunk::GetFreshBlocks(THostIndex hostIndex) const
+{
+    Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
+
+    return BlocksDirtyMap->GetFreshBlocks(hostIndex);
+}
+
 std::optional<TPBufferKey> TVChunk::GetSafeBarrierForErase() const
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());

@@ -72,6 +72,7 @@ public:
     [[nodiscard]] TCountAndSize GetPBuffersUsage(THostIndex hostIndex) const;
     [[nodiscard]] TCountAndSize GetAheadBlocks(THostIndex hostIndex) const;
     [[nodiscard]] TCountAndSize GetBehindBlocks(THostIndex hostIndex) const;
+    [[nodiscard]] TCountAndSize GetFreshBlocks(THostIndex hostIndex) const;
 
     // This vchunk's contribution to the tablet-wide cleanup watermark: the
     // smallest record id still held in PBuffers, or nullopt when nothing is

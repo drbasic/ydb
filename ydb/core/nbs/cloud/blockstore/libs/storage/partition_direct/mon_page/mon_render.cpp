@@ -227,7 +227,7 @@ void RenderMenu(
     str << "</div>";
 }
 
-void RenderFreshPercentage(
+void RenderWatermarks(
     IOutputStream& str,
     const TDbgSnapshot& dbg,
     ui32 blockSize)
@@ -236,6 +236,9 @@ void RenderFreshPercentage(
         TStringBuilder w;
         for (auto host: vChunkConfig.GetDDisks()) {
             if (auto watermark = vChunkConfig.GetWatermark(host)) {
+                if (!w.empty()) {
+                    w << ",";
+                }
                 w << PrintHostIndex(host) << ":" << *watermark / blockSize;
             }
         }
@@ -299,6 +302,7 @@ void RenderDbgList(
                     TCountAndSize pBuffersUsage;
                     TCountAndSize aheadBlocks;
                     TCountAndSize behindBlocks;
+                    TCountAndSize freshBlocks;
                     for (const auto& host: dbg.Hosts) {
                         ++healthCounts[host.Health];
                         consecutiveErrors += host.Errors.ConsecutiveErrorCount;
@@ -312,6 +316,7 @@ void RenderDbgList(
                         pBuffersUsage += host.PBuffersUsage;
                         aheadBlocks += host.AheadBlocks;
                         behindBlocks += host.BehindBlocks;
+                        freshBlocks += host.FreshBlocks;
                     }
                     TABLER () {
                         TABLED () {
@@ -345,7 +350,9 @@ void RenderDbgList(
                             str << behindBlocks.Print(true);
                         }
                         TABLED () {
-                            RenderFreshPercentage(
+                            str << dbg.Hosts[0].FreshBlocks.Print(true);
+                            str << "<br>";
+                            RenderWatermarks(
                                 str,
                                 dbg,
                                 tabletInfo.BlockSize);

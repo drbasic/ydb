@@ -127,8 +127,10 @@ public:
     [[nodiscard]] const TPBufferCounters& GetPBufferCounters(
         THostIndex host) const;
     [[nodiscard]] TCountAndSize GetPBuffersUsage(THostIndex host) const;
+    // Returns segment count and total blocks size in this segments;
     [[nodiscard]] TCountAndSize GetAheadBlocks(THostIndex host) const;
     [[nodiscard]] TCountAndSize GetBehindBlocks(THostIndex host) const;
+    [[nodiscard]] TCountAndSize GetFreshBlocks(THostIndex host) const;
 
     // ILockableRanges implementation
     void LockPBuffer(TPBufferKey pBufferKey) override;

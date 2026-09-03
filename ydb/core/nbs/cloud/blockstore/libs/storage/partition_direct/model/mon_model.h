@@ -37,6 +37,7 @@ struct THostSnapshot
     TCountAndSize PBuffersUsage;
     TCountAndSize AheadBlocks;
     TCountAndSize BehindBlocks;
+    TCountAndSize FreshBlocks;
     TLatencyByOperation LatencyByOperation;
 };
 

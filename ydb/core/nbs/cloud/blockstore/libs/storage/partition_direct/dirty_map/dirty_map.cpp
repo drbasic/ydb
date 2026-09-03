@@ -598,6 +598,21 @@ TCountAndSize TBlocksDirtyMap::GetBehindBlocks(THostIndex host) const
     return result;
 }
 
+TCountAndSize TBlocksDirtyMap::GetFreshBlocks(THostIndex host) const
+{
+    if (host >= DDiskStates.size()) {
+        return {};
+    }
+
+    if (DDiskStates[host].IsLagging()) {
+        return {};
+    }
+
+    TCountAndSize result = DDiskStates[host].GetBehindSegmentsStat();
+    result.Size *= BlockSize;
+    return result;
+}
+
 void TBlocksDirtyMap::LockPBuffer(TPBufferKey pBufferKey)
 {
     auto item = Inflight.GetValue(pBufferKey);
