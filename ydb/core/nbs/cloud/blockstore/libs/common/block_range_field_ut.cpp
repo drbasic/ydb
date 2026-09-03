@@ -1,5 +1,7 @@
 #include "block_range_field.h"
 
+#include "block_range_allocator.h"
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/vector.h>
@@ -34,11 +36,154 @@ TBlockRange64 R(ui64 start, ui64 end)
 Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 {
     // -------------------------------------------------------------------------
-    // Add – basic
+    // Memory measurement tests
+
+    Y_UNIT_TEST(MemoryPerSingleRange)
+    {
+        // Measure memory used by a single added range
+        TBlockRangeField f(4 * 1024);
+        UNIT_ASSERT(f.Add(R(100, 200)));
+
+        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
+        UNIT_ASSERT_LE(f.GetUsedBytes(), f.GetPoolSize());
+
+        Cout << "Bytes per one range in TSet: " << f.GetUsedBytes() << Endl;
+    }
+
+    Y_UNIT_TEST(MemoryScalingWithRangeCount)
+    {
+        TBlockRangeField f(64 * 1024);
+        for (ui64 i = 0; i < 1000; ++i) {
+            UNIT_ASSERT(f.Add(R(i * 10, i * 10 + 5)));
+        }
+
+        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
+    }
+
+    Y_UNIT_TEST(MemoryPerDisjointRange)
+    {
+        TBlockRangeField f(64 * 1024);
+        // Add ranges with gaps so they don't merge
+        for (ui64 i = 0; i < 100; ++i) {
+            UNIT_ASSERT(f.Add(R(i * 20, i * 20 + 5)));
+        }
+
+        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
+    }
+
+    Y_UNIT_TEST(MemoryPerMergedRange)
+    {
+        TBlockRangeField f(64 * 1024);
+        // Add many small ranges that will merge into one
+        for (ui64 i = 0; i < 100; ++i) {
+            UNIT_ASSERT(f.Add(R(i, i)));
+        }
+
+        // Should be a single range [0, 99]
+        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
+        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
+    }
+
+    Y_UNIT_TEST(MemoryPerLargeRange)
+    {
+        TBlockRangeField f(4 * 1024);
+        // A single large range (same memory as a small one — range data is
+        // fixed size)
+        UNIT_ASSERT(f.Add(R(0, 1000000)));
+
+        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
+        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
+    }
+
+    Y_UNIT_TEST(MemoryAfterRemoveAndAdd)
+    {
+        TBlockRangeField f(4 * 1024);
+        f.Add(R(0, 1000));
+
+        size_t memBefore = f.GetUsedBytes();
+
+        // Remove and add back — memory is NOT freed (pool allocator)
+        f.Remove(R(0, 1000));
+        f.Add(R(0, 1000));
+
+        size_t memAfter = f.GetUsedBytes();
+        // Memory should be higher because pool allocator doesn't free
+        UNIT_ASSERT_GE(memAfter, memBefore);
+    }
+
+    Y_UNIT_TEST(PoolExhaustionThrows)
+    {
+        TBlockRangeField f(4 * 1024);
+        // Add ranges until the 1 MB pool is exhausted
+        size_t count = 0;
+        UNIT_ASSERT_EXCEPTION(
+            [&]()
+            {
+                for (ui64 i = 0; i < 100000000; ++i) {
+                    f.Add(R(i * 100, i * 100 + 10));
+                    ++count;
+                }
+            }(),
+            yexception);
+        UNIT_ASSERT_GT(count, 0u);
+    }
+
+    Y_UNIT_TEST(PerInstancePools)
+    {
+        // Each TBlockRangeField has its own pool
+        TBlockRangeField f1(4 * 1024);
+        TBlockRangeField f2(4 * 1024);
+
+        UNIT_ASSERT(f1.Add(R(0, 10)));
+        UNIT_ASSERT(f2.Add(R(0, 10)));
+
+        UNIT_ASSERT_GT(f1.GetUsedBytes(), 0u);
+        UNIT_ASSERT_GT(f2.GetUsedBytes(), 0u);
+    }
+
+    Y_UNIT_TEST(CopyingIsForbidden)
+    {
+        static_assert(
+            !std::is_copy_constructible_v<TBlockRangeField>,
+            "TBlockRangeField must not be copy constructible");
+        static_assert(
+            !std::is_copy_assignable_v<TBlockRangeField>,
+            "TBlockRangeField must not be copy assignable");
+    }
+
+    Y_UNIT_TEST(MoveSemantics)
+    {
+        TBlockRangeField f1(4 * 1024);
+        UNIT_ASSERT(f1.Add(R(0, 10)));
+        UNIT_ASSERT_VALUES_EQUAL(1u, f1.GetSegmentCount());
+
+        TBlockRangeField f2 = std::move(f1);
+        UNIT_ASSERT_VALUES_EQUAL(1u, f2.GetSegmentCount());
+        UNIT_ASSERT_VALUES_EQUAL("[0..10]", f2.Print());
+
+        TBlockRangeField f3(4 * 1024);
+        UNIT_ASSERT(f3.Add(R(100, 200)));
+        f3 = std::move(f2);
+        UNIT_ASSERT_VALUES_EQUAL(1u, f3.GetSegmentCount());
+        UNIT_ASSERT_VALUES_EQUAL("[0..10]", f3.Print());
+    }
+
+    Y_UNIT_TEST(CustomPoolSize)
+    {
+        TBlockRangeField f(4 * 1024);
+        UNIT_ASSERT_VALUES_EQUAL(4u * 1024u, f.GetPoolSize());
+
+        // A different size should be honored too
+        TBlockRangeField big(1024 * 1024);
+        UNIT_ASSERT_VALUES_EQUAL(1024u * 1024u, big.GetPoolSize());
+    }
+
+    // -------------------------------------------------------------------------
+    // Existing functional tests (preserved)
 
     Y_UNIT_TEST(AddSingleRange)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(10, 20)));
         auto v = Collect(f);
         UNIT_ASSERT_VALUES_EQUAL(1u, v.size());
@@ -47,7 +192,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddTwoNonAdjacentRanges)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 5)));
         UNIT_ASSERT(f.Add(R(10, 15)));
         auto v = Collect(f);
@@ -58,7 +203,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddAdjacentRangesMerged)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 5)));
         UNIT_ASSERT(f.Add(R(6, 10)));
         auto v = Collect(f);
@@ -68,7 +213,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddOverlappingRangesMerged)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 10)));
         UNIT_ASSERT(f.Add(R(5, 15)));
         auto v = Collect(f);
@@ -78,7 +223,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddCoveredByExistingIsNoop)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 100)));
         UNIT_ASSERT(!f.Add(R(10, 20)));
         auto v = Collect(f);
@@ -88,7 +233,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddCoversMultipleRanges)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 5)));
         UNIT_ASSERT(f.Add(R(10, 15)));
         UNIT_ASSERT(f.Add(R(20, 25)));
@@ -101,7 +246,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddMergesOnBothSides)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 5)));
         UNIT_ASSERT(f.Add(R(10, 15)));
         // Bridge the gap.
@@ -113,7 +258,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddSameRangeTwice)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(3, 7)));
         UNIT_ASSERT(!f.Add(R(3, 7)));
         auto v = Collect(f);
@@ -123,11 +268,11 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddField)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 4)));
         UNIT_ASSERT(f.Add(R(20, 24)));
 
-        TBlockRangeField other;
+        TBlockRangeField other(4 * 1024);
         UNIT_ASSERT(other.Add(R(5, 10)));
         UNIT_ASSERT(other.Add(R(30, 34)));
 
@@ -142,14 +287,14 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveFromEmpty)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(!f.Remove(R(0, 10)));   // must not crash, returns false
         UNIT_ASSERT(Collect(f).empty());
     }
 
     Y_UNIT_TEST(RemoveExact)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 10)));
         UNIT_ASSERT(f.Remove(R(0, 10)));
         UNIT_ASSERT(Collect(f).empty());
@@ -157,7 +302,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveFromMiddle)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 20)));
         UNIT_ASSERT(f.Remove(R(5, 10)));
         auto v = Collect(f);
@@ -168,7 +313,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveLeftPart)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 20)));
         UNIT_ASSERT(f.Remove(R(0, 9)));
         auto v = Collect(f);
@@ -178,7 +323,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveRightPart)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 20)));
         UNIT_ASSERT(f.Remove(R(10, 20)));
         auto v = Collect(f);
@@ -188,7 +333,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveNonOverlapping)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(10, 20)));
         UNIT_ASSERT(!f.Remove(R(30, 40)));   // no overlap, no change
         auto v = Collect(f);
@@ -198,7 +343,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveSeveralRanges)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 5)));
         UNIT_ASSERT(f.Add(R(10, 15)));
         UNIT_ASSERT(f.Add(R(20, 25)));
@@ -211,10 +356,10 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveField)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 40)));
 
-        TBlockRangeField other;
+        TBlockRangeField other(4 * 1024);
         UNIT_ASSERT(other.Add(R(5, 9)));
         UNIT_ASSERT(other.Add(R(20, 29)));
 
@@ -230,55 +375,55 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(OverlapsOnEmpty)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(!f.Overlaps(R(0, 100)));
     }
 
     Y_UNIT_TEST(OverlapsExact)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         UNIT_ASSERT(f.Overlaps(R(10, 20)));
     }
 
     Y_UNIT_TEST(OverlapsPartialLeft)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         UNIT_ASSERT(f.Overlaps(R(5, 12)));
     }
 
     Y_UNIT_TEST(OverlapsPartialRight)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         UNIT_ASSERT(f.Overlaps(R(15, 30)));
     }
 
     Y_UNIT_TEST(OverlapsCovering)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         UNIT_ASSERT(f.Overlaps(R(0, 100)));
     }
 
     Y_UNIT_TEST(OverlapsNoOverlapBefore)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         UNIT_ASSERT(!f.Overlaps(R(0, 9)));
     }
 
     Y_UNIT_TEST(OverlapsNoOverlapAfter)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         UNIT_ASSERT(!f.Overlaps(R(21, 30)));
     }
 
     Y_UNIT_TEST(OverlapsAdjacentNotOverlapping)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));
         // [9,9] touches start but doesn't overlap.
         UNIT_ASSERT(!f.Overlaps(R(5, 9)));
@@ -288,8 +433,8 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(OverlapsField)
     {
-        TBlockRangeField left;
-        TBlockRangeField right;
+        TBlockRangeField left(4 * 1024);
+        TBlockRangeField right(4 * 1024);
 
         UNIT_ASSERT(!left.Overlaps(right));
 
@@ -310,7 +455,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddReturnsFalseWhenFullyCovered)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 100)));
         // Fully covered by existing interval – no change.
         UNIT_ASSERT(!f.Add(R(10, 20)));
@@ -320,13 +465,13 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveReturnsFalseWhenEmpty)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(!f.Remove(R(0, 100)));
     }
 
     Y_UNIT_TEST(RemoveReturnsFalseWhenNoOverlap)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(10, 20)));
         // Strictly before.
         UNIT_ASSERT(!f.Remove(R(0, 9)));
@@ -343,7 +488,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddStartingAtZero)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 0)));
         UNIT_ASSERT(f.Add(R(1, 5)));
         auto v = Collect(f);
@@ -353,7 +498,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(RemoveSingleBlock)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(0, 4)));
         UNIT_ASSERT(f.Remove(R(2, 2)));
         auto v = Collect(f);
@@ -364,7 +509,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(ManyFragmentsAfterRemoves)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(64 * 1024);
         UNIT_ASSERT(f.Add(R(0, 99)));
         // Remove every even block to create 50 gaps.
         for (ui64 i = 0; i < 100; i += 2) {
@@ -380,7 +525,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(AddRestoresAfterRemoves)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(64 * 1024);
         UNIT_ASSERT(f.Add(R(0, 99)));
         for (ui64 i = 0; i < 100; i += 2) {
             UNIT_ASSERT(f.Remove(R(i, i)));
@@ -396,7 +541,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(EnumerateOrderedByStart)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT(f.Add(R(50, 60)));
         UNIT_ASSERT(f.Add(R(10, 20)));
         UNIT_ASSERT(f.Add(R(30, 40)));
@@ -408,7 +553,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(EnumerateStopsAtCondition)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(0, 5));
         f.Add(R(10, 15));
         f.Add(R(20, 25));
@@ -434,14 +579,14 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersOnEmpty)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersAfterSingleAdd)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(10, 20));   // 11 blocks, 1 segment
         UNIT_ASSERT_VALUES_EQUAL(11u, f.GetBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
@@ -449,7 +594,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersAfterTwoDisjointAdds)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(0, 4));     // 5 blocks
         f.Add(R(10, 14));   // 5 blocks → total 10, 2 segments
         UNIT_ASSERT_VALUES_EQUAL(10u, f.GetBlockCount());
@@ -458,7 +603,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersAfterMerge)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(0, 4));
         f.Add(R(5, 9));   // adjacent – merges into [0,9], 10 blocks, 1 segment
         UNIT_ASSERT_VALUES_EQUAL(10u, f.GetBlockCount());
@@ -467,7 +612,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersAfterRemove)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(0, 19));     // 20 blocks, 1 segment
         f.Remove(R(5, 9));   // removes 5 blocks from the middle → 2 segments
         UNIT_ASSERT_VALUES_EQUAL(15u, f.GetBlockCount());
@@ -476,7 +621,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersAfterClear)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(0, 9));
         f.Add(R(20, 29));
         f.Clear();
@@ -486,7 +631,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersSingleBlock)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(4 * 1024);
         f.Add(R(42, 42));
         UNIT_ASSERT_VALUES_EQUAL(1u, f.GetBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
@@ -494,7 +639,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(CountersManyFragments)
     {
-        TBlockRangeField f;
+        TBlockRangeField f(64 * 1024);
         f.Add(R(0, 99));
         // Remove every even block → 50 single-block segments.
         for (ui64 i = 0; i < 100; i += 2) {

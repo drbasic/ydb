@@ -4,11 +4,11 @@
 
 #include "block_range.h"
 
-#include <util/generic/set.h>
+#include <memory>
 
 namespace NYdb::NBS::NBlockStore {
 
-////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 class TBlockRangeField
 {
@@ -20,6 +20,17 @@ public:
     };
     using TEnumerateFunc =
         std::function<EEnumerateContinuation(TBlockRange64 item)>;
+
+    explicit TBlockRangeField(size_t poolSize);
+    ~TBlockRangeField();
+
+    // Copying is forbidden: each field owns its own memory pool.
+    TBlockRangeField(const TBlockRangeField&) = delete;
+    TBlockRangeField& operator=(const TBlockRangeField&) = delete;
+
+    // Movable: implementation is moved as a whole.
+    TBlockRangeField(TBlockRangeField&& other) noexcept;
+    TBlockRangeField& operator=(TBlockRangeField&& other) noexcept;
 
     // Returns true if the intervals have actually changed.
     bool Add(TBlockRange64 range);
@@ -42,18 +53,15 @@ public:
     [[nodiscard]] size_t GetSegmentCount() const;
     [[nodiscard]] TString Print() const;
 
-private:
-    struct TBlockRangeComparator
-    {
-        bool operator()(TBlockRange64 a, TBlockRange64 b) const
-        {
-            return a.End < b.End;
-        }
-    };
+    // Memory pool accessors (for tests and diagnostics).
+    [[nodiscard]] size_t GetUsedBytes() const;
+    [[nodiscard]] size_t GetPoolSize() const;
 
-    TSet<TBlockRange64, TBlockRangeComparator> Intervals;
+private:
+    struct TImpl;
+    std::unique_ptr<TImpl> Impl_;
 };
 
-////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NYdb::NBS::NBlockStore
