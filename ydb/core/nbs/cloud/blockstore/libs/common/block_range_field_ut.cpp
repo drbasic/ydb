@@ -10,11 +10,11 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TVector<TBlockRange64> Collect(const TBlockRangeField& field)
+TVector<TBlockRange16> Collect(const TBlockRangeField& field)
 {
-    TVector<TBlockRange64> result;
+    TVector<TBlockRange16> result;
     field.Enumerate(
-        [&](TBlockRange64 r)
+        [&](TBlockRange16 r)
         {
             result.push_back(r);
             return TBlockRangeField::EEnumerateContinuation::Continue;
@@ -22,9 +22,9 @@ TVector<TBlockRange64> Collect(const TBlockRangeField& field)
     return result;
 }
 
-TBlockRange64 R(ui64 start, ui64 end)
+TBlockRange16 R(ui16 start, ui16 end)
 {
-    return TBlockRange64::MakeClosedInterval(start, end);
+    return TBlockRange16::MakeClosedInterval(start, end);
 }
 
 }   // namespace
@@ -367,13 +367,13 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         TBlockRangeField f;
         UNIT_ASSERT(f.Add(R(0, 99)));
         // Remove every even block to create 50 gaps.
-        for (ui64 i = 0; i < 100; i += 2) {
+        for (ui16 i = 0; i < 100; i += 2) {
             UNIT_ASSERT(f.Remove(R(i, i)));
         }
         auto v = Collect(f);
         UNIT_ASSERT_VALUES_EQUAL(50u, v.size());
-        for (ui64 i = 0; i < 50; ++i) {
-            ui64 odd = i * 2 + 1;
+        for (ui16 i = 0; i < 50; ++i) {
+            const ui16 odd = i * 2 + 1;
             UNIT_ASSERT_VALUES_EQUAL(R(odd, odd), v[i]);
         }
     }
@@ -382,11 +382,11 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
     {
         TBlockRangeField f;
         UNIT_ASSERT(f.Add(R(0, 99)));
-        for (ui64 i = 0; i < 100; i += 2) {
+        for (ui16 i = 0; i < 100; i += 2) {
             UNIT_ASSERT(f.Remove(R(i, i)));
         }
         // Adding back should merge everything.
-        for (ui64 i = 0; i < 100; i += 2) {
+        for (ui16 i = 0; i < 100; i += 2) {
             UNIT_ASSERT(f.Add(R(i, i)));
         }
         auto v = Collect(f);
@@ -413,9 +413,9 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         f.Add(R(10, 15));
         f.Add(R(20, 25));
 
-        TVector<TBlockRange64> seen;
+        TVector<TBlockRange16> seen;
         f.Enumerate(
-            [&](TBlockRange64 r)
+            [&](TBlockRange16 r)
             {
                 seen.push_back(r);
                 return r.Start >= 10
@@ -497,7 +497,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         TBlockRangeField f;
         f.Add(R(0, 99));
         // Remove every even block → 50 single-block segments.
-        for (ui64 i = 0; i < 100; i += 2) {
+        for (ui16 i = 0; i < 100; i += 2) {
             f.Remove(R(i, i));
         }
         UNIT_ASSERT_VALUES_EQUAL(50u, f.GetBlockCount());

@@ -352,10 +352,7 @@ void RenderDbgList(
                         TABLED () {
                             str << dbg.Hosts[0].FreshBlocks.Print(true);
                             str << "<br>";
-                            RenderWatermarks(
-                                str,
-                                dbg,
-                                tabletInfo.BlockSize);
+                            RenderWatermarks(str, dbg, tabletInfo.BlockSize);
                         }
                     }
                 }

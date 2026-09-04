@@ -19,12 +19,18 @@ public:
         Stop,
     };
     using TEnumerateFunc =
-        std::function<EEnumerateContinuation(TBlockRange64 item)>;
+        std::function<EEnumerateContinuation(TBlockRange16 item)>;
 
+    explicit TBlockRangeField(ui16 maxBlockCount = Max<ui16>());
+
+    // Returns true if the intervals have actually changed.
+    bool Add(TBlockRange16 range);
     // Returns true if the intervals have actually changed.
     bool Add(TBlockRange64 range);
     // Returns true if the intervals have actually changed.
     bool Add(const TBlockRangeField& field);
+    // Returns true if the intervals have actually changed.
+    bool Remove(TBlockRange16 range);
     // Returns true if the intervals have actually changed.
     bool Remove(TBlockRange64 range);
     // Returns true if the intervals have actually changed.
@@ -32,6 +38,7 @@ public:
     // Returns true if the intervals have actually changed.
     bool Clear();
 
+    [[nodiscard]] bool Overlaps(TBlockRange16 other) const;
     [[nodiscard]] bool Overlaps(TBlockRange64 other) const;
     [[nodiscard]] bool Overlaps(const TBlockRangeField& other) const;
 
@@ -45,13 +52,14 @@ public:
 private:
     struct TBlockRangeComparator
     {
-        bool operator()(TBlockRange64 a, TBlockRange64 b) const
+        bool operator()(TBlockRange16 a, TBlockRange16 b) const
         {
             return a.End < b.End;
         }
     };
 
-    TSet<TBlockRange64, TBlockRangeComparator> Intervals;
+    const ui16 MaxBlockCount;
+    TSet<TBlockRange16, TBlockRangeComparator> Intervals;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

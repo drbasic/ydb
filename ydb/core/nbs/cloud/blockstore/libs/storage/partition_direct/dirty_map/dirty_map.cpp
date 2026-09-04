@@ -34,10 +34,10 @@ TString TPBufferCounters::DebugPrint() const
 TBlocksDirtyMap::TBlocksDirtyMap(
     const TVChunkConfig& vChunkConfig,
     ui32 blockSize,
-    ui64 blockCount)
+    ui16 blockCount)
     : BlockSize(blockSize)
     , BlockCount(blockCount)
-    , DDiskStates(vChunkConfig.GetHostCount())
+    , DDiskStates(vChunkConfig.GetHostCount(), TDDiskState(blockCount))
     , PBufferCounters(vChunkConfig.GetHostCount())
 {
     UpdateConfig(vChunkConfig);
@@ -80,7 +80,7 @@ void TBlocksDirtyMap::UpdateConfig(const TVChunkConfig& vChunkConfig)
         DDiskStates[indx].Init(
             this,
             BlockCount,
-            watermark ? *watermark / BlockSize : BlockCount);
+            watermark ? IntegerCast<ui16>(*watermark / BlockSize) : BlockCount);
     }
 
     for (THostIndex h = 0; h < GetHostCount(); ++h) {
@@ -450,13 +450,20 @@ void TBlocksDirtyMap::UpdateWatermarkDebugOnly(
     THostIndex host,
     ui64 bytesOffset)
 {
-    DDiskStates[host].UpdateWatermarkDebugOnly(bytesOffset / BlockSize);
+    Y_ABORT_UNLESS(bytesOffset / BlockSize < Max<ui16>());
+
+    DDiskStates[host].UpdateWatermarkDebugOnly(
+        IntegerCast<ui16>(bytesOffset / BlockSize));
 }
 
 std::optional<TBlockRange64> TBlocksDirtyMap::GetFreshRange(
     THostIndex host) const
 {
-    return DDiskStates[host].GetFreshRange();
+    const auto range = DDiskStates[host].GetFreshRange();
+    if (!range) {
+        return std::nullopt;
+    }
+    return TBlockRange64::MakeClosedInterval(range->Start, range->End);
 }
 
 TSyncHint TBlocksDirtyMap::BeginRangeSync(THostIndex host, TBlockRange64 range)
@@ -490,7 +497,7 @@ void TBlocksDirtyMap::EndRangeSync(ui64 syncId, bool success)
 
     if (success) {
         DDiskStates[inflightSync->Value.DestinationHost].RangeSynced(
-            inflightSync->Range);
+            ConvertRangeSafe16(inflightSync->Range));
     }
 }
 
@@ -938,7 +945,9 @@ void TBlocksDirtyMap::ResizeHosts(size_t newHostCount)
     }
 
     PBufferCounters.resize(newHostCount);
-    DDiskStates.resize(newHostCount);
+    while (DDiskStates.size() < newHostCount) {
+        DDiskStates.emplace_back(BlockCount);
+    }
 }
 
 THostMask TBlocksDirtyMap::FilterLocations(
@@ -947,7 +956,7 @@ THostMask TBlocksDirtyMap::FilterLocations(
 {
     THostMask result = mask.Exclude(DisabledHosts);
     for (THostIndex h: result) {
-        if (!DDiskStates[h].CanReadFromDDisk(range)) {
+        if (!DDiskStates[h].CanReadFromDDisk(ConvertRangeSafe16(range))) {
             result.Reset(h);
         }
     }
@@ -1007,7 +1016,7 @@ void TBlocksDirtyMap::AddToAheadAndBehindOnFlushCompleted(
 
     for (THostIndex host = 0; host < GetHostCount(); ++host) {
         DDiskStates[host].OnRangeFlushed(
-            inflight->Range,
+            ConvertRangeSafe16(inflight->Range),
             ddisks.Get(host) ? TDDiskState::EFlushCompletion::Completed
                              : TDDiskState::EFlushCompletion::Missed);
     }
@@ -1069,7 +1078,7 @@ bool TBlocksDirtyMap::CheckEraseAbility(
         [&](const TDDiskState& ddiskState)
         {
             return ddiskState.IsTrackingEnabled() &&
-                   ddiskState.HasBehindOverlapping(range);
+                   ddiskState.HasBehindOverlapping(ConvertRangeSafe16(range));
         });
 
     if (!eraseBlocked) {

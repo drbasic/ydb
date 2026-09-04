@@ -59,7 +59,7 @@ public:
     TBlocksDirtyMap(
         const TVChunkConfig& vChunkConfig,
         ui32 blockSize,
-        ui64 blockCount);
+        ui16 blockCount);
     ~TBlocksDirtyMap() override;
 
     void Load(const TDirtyMapStateProto& proto);
@@ -225,7 +225,7 @@ private:
         TInflightInfo& inflightInfo);
 
     const ui32 BlockSize;
-    const ui64 BlockCount;
+    const ui16 BlockCount;
 
     THostMask DesiredDDisks;
     THostMask DisabledHosts;

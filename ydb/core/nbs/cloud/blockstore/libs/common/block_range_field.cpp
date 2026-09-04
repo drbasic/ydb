@@ -6,8 +6,20 @@ namespace NYdb::NBS::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TBlockRangeField::TBlockRangeField(ui16 maxBlockCount)
+    : MaxBlockCount(maxBlockCount)
+{}
+
+bool TBlockRangeField::Add(TBlockRange16 range)
+{
+    return Add(TBlockRange64::MakeClosedInterval(range.Start, range.End));
+}
+
 bool TBlockRangeField::Add(TBlockRange64 range)
 {
+    Y_ABORT_UNLESS(range.End < MaxBlockCount);
+    const TBlockRange16 range16 = ConvertRangeSafe16(range);
+
     // Non-overlapping ranges sorted by End are also sorted by Start, so we
     // can iterate forward and stop early.
 
@@ -15,22 +27,22 @@ bool TBlockRangeField::Add(TBlockRange64 range)
     // overlapping on the left side of the new range).
     // When range.Start == 0, "range.Start - 1" would underflow → start from
     // begin() to cover all intervals.
-    auto it = (range.Start > 0)
+    auto it = (range16.Start > 0)
                   ? Intervals.lower_bound(
-                        TBlockRange64::MakeClosedInterval(0, range.Start - 1))
+                        TBlockRange16::MakeClosedInterval(0, range16.Start - 1))
                   : Intervals.begin();
 
-    ui64 mergedStart = range.Start;
-    ui64 mergedEnd = range.End;
+    ui16 mergedStart = range16.Start;
+    ui16 mergedEnd = range16.End;
     size_t erasedCount = 0;
-    TBlockRange64 firstErased = range;
+    TBlockRange16 firstErased = range16;
 
     while (it != Intervals.end()) {
         // For non-overlapping ranges sorted by End (= sorted by Start), we can
         // stop when the next interval starts strictly after mergedEnd + 1.
         // Guard against overflow when mergedEnd == MaxIndex: in that case every
         // possible Start is <= mergedEnd, so no early exit is possible.
-        if (mergedEnd != TBlockRange64::MaxIndex && it->Start > mergedEnd + 1) {
+        if (mergedEnd != TBlockRange16::MaxIndex && it->Start > mergedEnd + 1) {
             break;
         }
 
@@ -43,8 +55,8 @@ bool TBlockRangeField::Add(TBlockRange64 range)
         ++erasedCount;
     }
 
-    const TBlockRange64 merged =
-        TBlockRange64::MakeClosedInterval(mergedStart, mergedEnd);
+    const TBlockRange16 merged =
+        TBlockRange16::MakeClosedInterval(mergedStart, mergedEnd);
     Intervals.insert(merged);
 
     return erasedCount != 1 || merged != firstErased;
@@ -58,9 +70,15 @@ bool TBlockRangeField::Add(const TBlockRangeField& field)
 
     bool changed = false;
     for (const auto& range: field.Intervals) {
-        changed |= Add(range);
+        changed |=
+            Add(TBlockRange64::MakeClosedInterval(range.Start, range.End));
     }
     return changed;
+}
+
+bool TBlockRangeField::Remove(TBlockRange16 range)
+{
+    return Remove(TBlockRange64::MakeClosedInterval(range.Start, range.End));
 }
 
 bool TBlockRangeField::Remove(TBlockRange64 range)
@@ -70,33 +88,42 @@ bool TBlockRangeField::Remove(TBlockRange64 range)
     }
 
     // Find first interval with End >= range.Start (could overlap with range).
+    if (range.Start >= MaxBlockCount) {
+        return false;
+    }
+
+    const TBlockRange16 range16 =
+        ConvertRangeSafe16(TBlockRange64::MakeClosedInterval(
+            range.Start,
+            Min<ui64>(range.End, MaxBlockCount - 1)));
     auto it = Intervals.lower_bound(
-        TBlockRange64::MakeClosedInterval(0, range.Start));
+        TBlockRange16::MakeClosedInterval(0, range16.Start));
 
     bool changed = false;
     while (it != Intervals.end()) {
         // Since Start is monotonically increasing (non-overlapping + sorted by
         // End), stop once Start is past range.End.
-        if (it->Start > range.End) {
+        if (it->Start > range16.End) {
             break;
         }
 
-        const TBlockRange64 existing = *it;
+        const TBlockRange16 existing = *it;
         it = Intervals.erase(it);
         changed = true;
 
         // Keep the left tail if the existing interval starts before
         // range.Start.
-        if (existing.Start < range.Start) {
-            Intervals.insert(TBlockRange64::MakeClosedInterval(
+        if (existing.Start < range16.Start) {
+            Intervals.insert(TBlockRange16::MakeClosedInterval(
                 existing.Start,
-                range.Start - 1));
+                range16.Start - 1));
         }
 
         // Keep the right tail if the existing interval ends after range.End.
-        if (existing.End > range.End) {
-            Intervals.insert(
-                TBlockRange64::MakeClosedInterval(range.End + 1, existing.End));
+        if (existing.End > range16.End) {
+            Intervals.insert(TBlockRange16::MakeClosedInterval(
+                range16.End + 1,
+                existing.End));
             break;
         }
     }
@@ -111,7 +138,8 @@ bool TBlockRangeField::Remove(const TBlockRangeField& field)
 
     bool changed = false;
     for (const auto& range: field.Intervals) {
-        changed |= Remove(range);
+        changed |=
+            Remove(TBlockRange64::MakeClosedInterval(range.Start, range.End));
     }
     return changed;
 }
@@ -123,6 +151,11 @@ bool TBlockRangeField::Clear()
     return changed;
 }
 
+bool TBlockRangeField::Overlaps(TBlockRange16 other) const
+{
+    return Overlaps(TBlockRange64::MakeClosedInterval(other.Start, other.End));
+}
+
 bool TBlockRangeField::Overlaps(TBlockRange64 other) const
 {
     if (Intervals.empty()) {
@@ -130,14 +163,22 @@ bool TBlockRangeField::Overlaps(TBlockRange64 other) const
     }
 
     // First interval with End >= other.Start.
+    if (other.Start >= MaxBlockCount) {
+        return false;
+    }
+
+    const TBlockRange16 other16 =
+        ConvertRangeSafe16(TBlockRange64::MakeClosedInterval(
+            other.Start,
+            Min<ui64>(other.End, MaxBlockCount - 1)));
     auto it = Intervals.lower_bound(
-        TBlockRange64::MakeClosedInterval(0, other.Start));
+        TBlockRange16::MakeClosedInterval(0, other16.Start));
 
     if (it == Intervals.end()) {
         return false;
     }
 
-    return it->Overlaps(other);
+    return it->Overlaps(other16);
 }
 
 bool TBlockRangeField::Overlaps(const TBlockRangeField& other) const

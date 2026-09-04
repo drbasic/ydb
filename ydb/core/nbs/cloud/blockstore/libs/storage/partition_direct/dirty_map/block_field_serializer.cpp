@@ -65,7 +65,7 @@ TString MakeRunLengthEncoding(const TBlockRangeField& field, ui64 blockCount)
 
     ui64 position = 0;
     field.Enumerate(
-        [&](TBlockRange64 item)
+        [&](TBlockRange16 item)
         {
             Y_ABORT_UNLESS(item.End < blockCount);
 
@@ -84,7 +84,7 @@ TString MakeBitMask(const TBlockRangeField& field, ui64 blockCount)
     TString result;
 
     field.Enumerate(
-        [&](TBlockRange64 item)
+        [&](TBlockRange16 item)
         {
             Y_ABORT_UNLESS(item.End < blockCount);
 
