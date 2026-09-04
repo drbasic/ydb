@@ -17,9 +17,11 @@ namespace NYdb::NBS::NBlockStore {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Range [start, end]. End value included to range.
-template <std::unsigned_integral TBlockIndex>
+template <std::unsigned_integral T>
 struct TBlockRange
 {
+    using TBlockIndex = T;
+
     struct TDifference
     {
         std::optional<TBlockRange> First;
@@ -256,9 +258,10 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TBlockRange16 = TBlockRange<ui16>;
 using TBlockRange32 = TBlockRange<ui32>;
 using TBlockRange64 = TBlockRange<ui64>;
-using TBlockRange16 = TBlockRange<ui16>;
+using TBlockRange16Builder = TBlockRangeBuilder<ui16>;
 using TBlockRange32Builder = TBlockRangeBuilder<ui32>;
 using TBlockRange64Builder = TBlockRangeBuilder<ui64>;
 

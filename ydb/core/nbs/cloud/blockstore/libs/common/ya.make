@@ -3,6 +3,8 @@ LIBRARY()
 SRCS(
     block_range_algorithms.cpp
     block_range_field.cpp
+    block_range_field_flat_set.cpp
+    block_range_field_impl.cpp
     block_range_field_set.cpp
     block_range_map.cpp
     block_range.cpp
