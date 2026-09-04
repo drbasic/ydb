@@ -258,6 +258,7 @@ public:
 
 using TBlockRange32 = TBlockRange<ui32>;
 using TBlockRange64 = TBlockRange<ui64>;
+using TBlockRange16 = TBlockRange<ui16>;
 using TBlockRange32Builder = TBlockRangeBuilder<ui32>;
 using TBlockRange64Builder = TBlockRangeBuilder<ui64>;
 

@@ -32,6 +32,9 @@ bool TBlockRange<TBlockIndex>::TryParse(
 
 template bool TBlockRange32::TryParse(TStringBuf s, TBlockRange32& range);
 template bool TBlockRange64::TryParse(TStringBuf s, TBlockRange64& range);
+template bool TBlockRange<ui16>::TryParse(
+    TStringBuf s,
+    TBlockRange<ui16>& range);
 
 template <std::unsigned_integral TBlockIndex>
 TString TBlockRange<TBlockIndex>::Print() const
@@ -41,6 +44,7 @@ TString TBlockRange<TBlockIndex>::Print() const
 
 template TString TBlockRange32::Print() const;
 template TString TBlockRange64::Print() const;
+template TString TBlockRange<ui16>::Print() const;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -52,6 +56,7 @@ TString DescribeRange(const TBlockRange<TBlockIndex>& blockRange)
 
 template TString DescribeRange(const TBlockRange32& blockRange);
 template TString DescribeRange(const TBlockRange64& blockRange);
+template TString DescribeRange(const TBlockRange<ui16>& blockRange);
 
 template <std::unsigned_integral TBlockIndex>
 TString DescribeRange(const TVector<TBlockIndex>& blocks)
