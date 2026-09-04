@@ -6,6 +6,23 @@
 
 namespace NYdb::NBS::NBlockStore {
 
+// Exposes the storage selected by TBlockRangeField for unit tests.
+class TBlockRangeFieldTestAccessor
+{
+public:
+    // Returns true when the field stores its range inline.
+    static bool HasInlineRange(const TBlockRangeField& field)
+    {
+        return !field.Simple.Empty();
+    }
+
+    // Returns true when the field uses the set-based implementation.
+    static bool HasImpl(const TBlockRangeField& field)
+    {
+        return field.Impl != nullptr;
+    }
+};
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,6 +50,37 @@ TBlockRange16 R(ui16 start, ui16 end)
 
 Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 {
+    Y_UNIT_TEST(ShouldCreateImplOnlyForMultipleRanges)
+    {
+        TBlockRangeField f;
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasImpl(f));
+
+        f.Add(R(10, 20));
+        UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasImpl(f));
+
+        f.Add(R(21, 30));
+        UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasImpl(f));
+
+        f.Add(R(40, 50));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasImpl(f));
+
+        f.Remove(R(40, 50));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasImpl(f));
+
+        f.Remove(R(15, 20));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasImpl(f));
+
+        f.Clear();
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasInlineRange(f));
+        UNIT_ASSERT(!TBlockRangeFieldTestAccessor::HasImpl(f));
+    }
+
     // -------------------------------------------------------------------------
     // Add – basic
 

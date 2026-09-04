@@ -1,8 +1,37 @@
 #include "block_range_field.h"
 
-#include <util/string/builder.h>
+#include "block_range_field_std_set.h"
+
+#include <optional>
+#include <utility>
 
 namespace NYdb::NBS::NBlockStore {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+void AddRanges(const IBlockRangeFieldImpl& source, IBlockRangeFieldImpl* target)
+{
+    source.Enumerate(
+        [&](TBlockRange16 range)
+        {
+            bool changed = false;
+            Y_ABORT_UNLESS(target->TryAdd(range, &changed));
+            return IBlockRangeFieldImpl::EEnumerateContinuation::Continue;
+        });
+}
+
+std::unique_ptr<IBlockRangeFieldImpl> MakeStdSetImpl(
+    ui16 maxBlockCount,
+    const IBlockRangeFieldImpl& source)
+{
+    auto result = std::make_unique<TBlockRangeFieldStdSet>(maxBlockCount);
+    AddRanges(source, result.get());
+    return result;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -10,50 +39,36 @@ TBlockRangeField::TBlockRangeField(ui16 maxBlockCount)
     : MaxBlockCount(maxBlockCount)
 {}
 
+TBlockRangeField::TBlockRangeField(const TBlockRangeField& other)
+    : MaxBlockCount(other.MaxBlockCount)
+    , Simple(other.Simple)
+    , Impl(other.Impl ? MakeStdSetImpl(MaxBlockCount, *other.Impl) : nullptr)
+{}
+
+TBlockRangeField::TBlockRangeField(TBlockRangeField&& other) noexcept
+    : MaxBlockCount(other.MaxBlockCount)
+    , Simple(std::move(other.Simple))
+    , Impl(std::move(other.Impl))
+{}
+
+TBlockRangeField::~TBlockRangeField() = default;
+
 bool TBlockRangeField::Add(TBlockRange16 range)
 {
-    Y_ABORT_UNLESS(range.End < MaxBlockCount);
-
-    // Non-overlapping ranges sorted by End are also sorted by Start, so we
-    // can iterate forward and stop early.
-
-    // Find first existing interval with End >= range.Start - 1 (adjacent or
-    // overlapping on the left side of the new range).
-    // When range.Start == 0, "range.Start - 1" would underflow → start from
-    // begin() to cover all intervals.
-    auto it = (range.Start > 0)
-                  ? Intervals.lower_bound(
-                        TBlockRange16::MakeClosedInterval(0, range.Start - 1))
-                  : Intervals.begin();
-
-    ui16 mergedStart = range.Start;
-    ui16 mergedEnd = range.End;
-    size_t erasedCount = 0;
-    TBlockRange16 firstErased = range;
-
-    while (it != Intervals.end()) {
-        // For non-overlapping ranges sorted by End (= sorted by Start), we can
-        // stop when the next interval starts strictly after mergedEnd + 1.
-        // Guard against overflow when mergedEnd == MaxIndex: in that case every
-        // possible Start is <= mergedEnd, so no early exit is possible.
-        if (mergedEnd != TBlockRange16::MaxIndex && it->Start > mergedEnd + 1) {
-            break;
-        }
-
-        if (erasedCount == 0) {
-            firstErased = *it;
-        }
-        mergedStart = Min(mergedStart, it->Start);
-        mergedEnd = Max(mergedEnd, it->End);
-        it = Intervals.erase(it);
-        ++erasedCount;
+    bool changed = false;
+    if (Impl) {
+        Y_ABORT_UNLESS(Impl->TryAdd(range, &changed));
+        return changed;
     }
 
-    const TBlockRange16 merged =
-        TBlockRange16::MakeClosedInterval(mergedStart, mergedEnd);
-    Intervals.insert(merged);
+    if (Simple.TryAdd(range, &changed)) {
+        return changed;
+    }
 
-    return erasedCount != 1 || merged != firstErased;
+    Impl = MakeStdSetImpl(MaxBlockCount, Simple);
+    Y_ABORT_UNLESS(Impl->TryAdd(range, &changed));
+    Simple.Clear();
+    return changed;
 }
 
 bool TBlockRangeField::Add(const TBlockRangeField& field)
@@ -63,58 +78,31 @@ bool TBlockRangeField::Add(const TBlockRangeField& field)
     }
 
     bool changed = false;
-    for (const auto& range: field.Intervals) {
-        changed |= Add(range);
-    }
+    field.Enumerate(
+        [&](TBlockRange16 range)
+        {
+            changed |= Add(range);
+            return EEnumerateContinuation::Continue;
+        });
     return changed;
 }
 
 bool TBlockRangeField::Remove(TBlockRange16 range)
 {
-    if (Intervals.empty()) {
-        return false;
-    }
-
-    // Find first interval with End >= range.Start (could overlap with range).
-    if (range.Start >= MaxBlockCount) {
-        return false;
-    }
-
-    const TBlockRange16 range16 =
-        ConvertRangeSafe16(TBlockRange64::MakeClosedInterval(
-            range.Start,
-            Min<ui64>(range.End, MaxBlockCount - 1)));
-    auto it = Intervals.lower_bound(
-        TBlockRange16::MakeClosedInterval(0, range16.Start));
-
     bool changed = false;
-    while (it != Intervals.end()) {
-        // Since Start is monotonically increasing (non-overlapping + sorted by
-        // End), stop once Start is past range.End.
-        if (it->Start > range16.End) {
-            break;
-        }
-
-        const TBlockRange16 existing = *it;
-        it = Intervals.erase(it);
-        changed = true;
-
-        // Keep the left tail if the existing interval starts before
-        // range.Start.
-        if (existing.Start < range16.Start) {
-            Intervals.insert(TBlockRange16::MakeClosedInterval(
-                existing.Start,
-                range16.Start - 1));
-        }
-
-        // Keep the right tail if the existing interval ends after range.End.
-        if (existing.End > range16.End) {
-            Intervals.insert(TBlockRange16::MakeClosedInterval(
-                range16.End + 1,
-                existing.End));
-            break;
-        }
+    if (Impl) {
+        Y_ABORT_UNLESS(Impl->TryRemove(range, &changed));
+        CollapseImpl();
+        return changed;
     }
+
+    if (Simple.TryRemove(range, &changed)) {
+        return changed;
+    }
+
+    Impl = MakeStdSetImpl(MaxBlockCount, Simple);
+    Y_ABORT_UNLESS(Impl->TryRemove(range, &changed));
+    Simple.Clear();
     return changed;
 }
 
@@ -125,95 +113,92 @@ bool TBlockRangeField::Remove(const TBlockRangeField& field)
     }
 
     bool changed = false;
-    for (const auto& range: field.Intervals) {
-        changed |= Remove(range);
-    }
+    field.Enumerate(
+        [&](TBlockRange16 range)
+        {
+            changed |= Remove(range);
+            return Empty() ? EEnumerateContinuation::Stop
+                           : EEnumerateContinuation::Continue;
+        });
     return changed;
 }
 
 bool TBlockRangeField::Clear()
 {
-    const bool changed = !Intervals.empty();
-    Intervals.clear();
-    return changed;
+    if (Empty()) {
+        return false;
+    }
+
+    Simple.Clear();
+    Impl.reset();
+    return true;
 }
 
 bool TBlockRangeField::Overlaps(TBlockRange16 other) const
 {
-    if (Intervals.empty()) {
+    if (Empty()) {
         return false;
     }
-
-    // First interval with End >= other.Start.
-    if (other.Start >= MaxBlockCount) {
-        return false;
-    }
-
-    auto it = Intervals.lower_bound(
-        TBlockRange16::MakeClosedInterval(0, other.Start));
-
-    if (it == Intervals.end()) {
-        return false;
-    }
-
-    return it->Overlaps(other);
+    return Impl ? Impl->Overlaps(other) : Simple.Overlaps(other);
 }
 
 bool TBlockRangeField::Overlaps(const TBlockRangeField& other) const
 {
-    // Disjoint intervals are ordered by both Start and End, so advance the
-    // interval that lies entirely before the other one.
-    auto left = Intervals.begin();
-    auto right = other.Intervals.begin();
-
-    while (left != Intervals.end() && right != other.Intervals.end()) {
-        if (left->End < right->Start) {
-            ++left;
-        } else if (right->End < left->Start) {
-            ++right;
-        } else {
-            return true;
-        }
+    if (Empty()) {
+        return false;
     }
 
-    return false;
+    bool overlaps = false;
+    other.Enumerate(
+        [&](TBlockRange16 range)
+        {
+            overlaps = Overlaps(range);
+            return overlaps ? EEnumerateContinuation::Stop
+                            : EEnumerateContinuation::Continue;
+        });
+    return overlaps;
 }
 
 void TBlockRangeField::Enumerate(TEnumerateFunc func) const
 {
-    for (const auto& range: Intervals) {
-        if (func(range) == EEnumerateContinuation::Stop) {
-            break;
-        }
-    }
+    (Impl ? Impl.get() : &Simple)->Enumerate(std::move(func));
 }
 
 bool TBlockRangeField::Empty() const
 {
-    return Intervals.empty();
+    return !Impl && Simple.Empty();
 }
 
 ui16 TBlockRangeField::GetBlockCount() const
 {
-    size_t total = 0;
-    for (const auto& range: Intervals) {
-        total += range.Size();
-    }
-    return IntegerCast<ui16>(total);
+    return Impl ? Impl->GetBlockCount() : Simple.GetBlockCount();
 }
 
 size_t TBlockRangeField::GetSegmentCount() const
 {
-    return Intervals.size();
+    size_t segmentCount = 0;
+    Enumerate(
+        [&](TBlockRange16)
+        {
+            ++segmentCount;
+            return EEnumerateContinuation::Continue;
+        });
+    return segmentCount;
 }
 
 TString TBlockRangeField::Print() const
 {
-    TStringBuilder result;
-    for (const auto& range: Intervals) {
-        result << range.Print();
+    return Impl ? Impl->Print() : Simple.Print();
+}
+
+void TBlockRangeField::CollapseImpl()
+{
+    if (!Impl) {
+        return;
     }
-    return result;
+    if (Impl->Empty()) {
+        Impl.reset();
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

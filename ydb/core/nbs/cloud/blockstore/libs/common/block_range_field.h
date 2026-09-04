@@ -2,26 +2,29 @@
 
 #include "public.h"
 
-#include "block_range.h"
+#include "block_range_field_impl.h"
+#include "block_range_field_simple.h"
 
-#include <util/generic/set.h>
+#include <memory>
 
 namespace NYdb::NBS::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TBlockRangeFieldStdSet;
+class TBlockRangeFieldTestAccessor;
+
+// Stores zero or one block range inline and uses a set for multiple ranges.
 class TBlockRangeField
 {
 public:
-    enum class EEnumerateContinuation
-    {
-        Continue,
-        Stop,
-    };
-    using TEnumerateFunc =
-        std::function<EEnumerateContinuation(TBlockRange16 item)>;
+    using EEnumerateContinuation = IBlockRangeFieldImpl::EEnumerateContinuation;
+    using TEnumerateFunc = IBlockRangeFieldImpl::TEnumerateFunc;
 
     explicit TBlockRangeField(ui16 maxBlockCount = Max<ui16>());
+    TBlockRangeField(const TBlockRangeField& other);
+    TBlockRangeField(TBlockRangeField&& other) noexcept;
+    ~TBlockRangeField();
 
     // Returns true if the intervals have actually changed.
     bool Add(TBlockRange16 range);
@@ -45,16 +48,13 @@ public:
     [[nodiscard]] TString Print() const;
 
 private:
-    struct TBlockRangeComparator
-    {
-        bool operator()(TBlockRange16 a, TBlockRange16 b) const
-        {
-            return a.End < b.End;
-        }
-    };
+    friend class TBlockRangeFieldTestAccessor;
+
+    void CollapseImpl();
 
     const ui16 MaxBlockCount;
-    TSet<TBlockRange16, TBlockRangeComparator> Intervals;
+    TBlockRangeFieldSimple Simple;
+    std::unique_ptr<IBlockRangeFieldImpl> Impl;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
