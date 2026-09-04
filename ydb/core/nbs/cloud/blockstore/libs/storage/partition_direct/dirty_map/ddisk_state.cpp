@@ -187,18 +187,14 @@ void TDDiskState::RangeSynced(TBlockRange16 range)
     CheckInvariants();
 }
 
-TCountAndSize TDDiskState::GetAheadSegmentsStat() const
+ui16 TDDiskState::GetAheadBlockCount() const
 {
-    return TCountAndSize{
-        .Count = AheadField.GetSegmentCount(),
-        .Size = AheadField.GetBlockCount()};
+    return AheadField.GetBlockCount();
 }
 
-TCountAndSize TDDiskState::GetBehindSegmentsStat() const
+ui16 TDDiskState::GetBehindBlockCount() const
 {
-    return TCountAndSize{
-        .Count = BehindField.GetSegmentCount(),
-        .Size = BehindField.GetBlockCount()};
+    return BehindField.GetBlockCount();
 }
 
 void TDDiskState::UpdateWatermarkDebugOnly(ui16 blockCount)

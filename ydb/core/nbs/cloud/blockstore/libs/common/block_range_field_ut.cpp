@@ -430,13 +430,12 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
     }
 
     // -------------------------------------------------------------------------
-    // GetBlockCount / GetSegmentCount
+    // GetBlockCount
 
     Y_UNIT_TEST(CountersOnEmpty)
     {
         TBlockRangeField f;
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(0u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersAfterSingleAdd)
@@ -444,7 +443,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         TBlockRangeField f;
         f.Add(R(10, 20));   // 11 blocks, 1 segment
         UNIT_ASSERT_VALUES_EQUAL(11u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersAfterTwoDisjointAdds)
@@ -453,7 +451,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         f.Add(R(0, 4));     // 5 blocks
         f.Add(R(10, 14));   // 5 blocks → total 10, 2 segments
         UNIT_ASSERT_VALUES_EQUAL(10u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(2u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersAfterMerge)
@@ -462,7 +459,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         f.Add(R(0, 4));
         f.Add(R(5, 9));   // adjacent – merges into [0,9], 10 blocks, 1 segment
         UNIT_ASSERT_VALUES_EQUAL(10u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersAfterRemove)
@@ -471,7 +467,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         f.Add(R(0, 19));     // 20 blocks, 1 segment
         f.Remove(R(5, 9));   // removes 5 blocks from the middle → 2 segments
         UNIT_ASSERT_VALUES_EQUAL(15u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(2u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersAfterClear)
@@ -481,7 +476,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         f.Add(R(20, 29));
         f.Clear();
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(0u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersSingleBlock)
@@ -489,7 +483,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         TBlockRangeField f;
         f.Add(R(42, 42));
         UNIT_ASSERT_VALUES_EQUAL(1u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
     }
 
     Y_UNIT_TEST(CountersManyFragments)
@@ -501,7 +494,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
             f.Remove(R(i, i));
         }
         UNIT_ASSERT_VALUES_EQUAL(50u, f.GetBlockCount());
-        UNIT_ASSERT_VALUES_EQUAL(50u, f.GetSegmentCount());
     }
 }
 

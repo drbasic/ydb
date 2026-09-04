@@ -120,7 +120,7 @@ void LoadRunLengthEncoding(TStringBuf input, TBlockRangeField* field)
 
         position += skipLength;
         Y_ABORT_UNLESS(fillLength <= MaxVChunkBlockCount - position);
-        field->Add(TBlockRange64::WithLength(position, fillLength));
+        field->Add(TBlockRange16::WithLength(position, fillLength));
         position += fillLength;
     }
 }
@@ -147,7 +147,7 @@ void LoadBitMask(TStringBuf input, TBlockRangeField* field)
         }
         if (rangeStart != blockIndex) {
             field->Add(
-                TBlockRange64::WithLength(rangeStart, blockIndex - rangeStart));
+                TBlockRange16::WithLength(rangeStart, blockIndex - rangeStart));
         }
     }
 }

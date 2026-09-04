@@ -300,9 +300,9 @@ void RenderDbgList(
                     size_t consecutiveErrors = 0;
                     size_t consecutiveSuccesses = 0;
                     TCountAndSize pBuffersUsage;
-                    TCountAndSize aheadBlocks;
-                    TCountAndSize behindBlocks;
-                    TCountAndSize freshBlocks;
+                    ui64 aheadTotalBytes = 0;
+                    ui64 behindTotalBytes = 0;
+                    ui64 freshTotalBytes = 0;
                     for (const auto& host: dbg.Hosts) {
                         ++healthCounts[host.Health];
                         consecutiveErrors += host.Errors.ConsecutiveErrorCount;
@@ -314,9 +314,9 @@ void RenderDbgList(
                             inflight += host.InflightByOperation[operation];
                         }
                         pBuffersUsage += host.PBuffersUsage;
-                        aheadBlocks += host.AheadBlocks;
-                        behindBlocks += host.BehindBlocks;
-                        freshBlocks += host.FreshBlocks;
+                        aheadTotalBytes += host.AheadTotalBytes;
+                        behindTotalBytes += host.BehindTotalBytes;
+                        freshTotalBytes += host.FreshTotalBytes;
                     }
                     TABLER () {
                         TABLED () {
@@ -344,13 +344,13 @@ void RenderDbgList(
                             str << pBuffersUsage.Print(true);
                         }
                         TABLED () {
-                            str << aheadBlocks.Print(true);
+                            str << FormatByteSize(aheadTotalBytes);
                         }
                         TABLED () {
-                            str << behindBlocks.Print(true);
+                            str << FormatByteSize(behindTotalBytes);
                         }
                         TABLED () {
-                            str << dbg.Hosts[0].FreshBlocks.Print(true);
+                            str << FormatByteSize(freshTotalBytes);
                             str << "<br>";
                             RenderWatermarks(str, dbg, tabletInfo.BlockSize);
                         }
@@ -436,10 +436,10 @@ void RenderDbgDetail(
                             str << host.PBuffersUsage.Print(true);
                         }
                         TABLED () {
-                            str << host.AheadBlocks.Print(true);
+                            str << FormatByteSize(host.AheadTotalBytes);
                         }
                         TABLED () {
-                            str << host.BehindBlocks.Print(true);
+                            str << FormatByteSize(host.BehindTotalBytes);
                         }
                         TABLED () {
                             str << host.Errors.ConsecutiveErrorCount;

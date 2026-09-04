@@ -229,8 +229,8 @@ Y_UNIT_TEST_SUITE(TDDiskStateTest)
         UNIT_ASSERT_VALUES_EQUAL(false, ddisk.IsTrackingEnabled());
         UNIT_ASSERT_VALUES_EQUAL("", ddisk.DebugPrintBehind());
         UNIT_ASSERT_VALUES_EQUAL("", ddisk.DebugPrintAhead());
-        UNIT_ASSERT_VALUES_EQUAL(0, ddisk.GetBehindSegmentsStat().Count);
-        UNIT_ASSERT_VALUES_EQUAL(0, ddisk.GetAheadSegmentsStat().Count);
+        UNIT_ASSERT_VALUES_EQUAL(0, ddisk.GetBehindBlockCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, ddisk.GetAheadBlockCount());
     }
 
     // HasBehindOverlapping: false when empty, true when the query overlaps

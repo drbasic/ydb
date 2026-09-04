@@ -2053,9 +2053,12 @@ TDbgSnapshot TDirectBlockGroup::DoBuildMonSnapshot() const
                 vChunk->GetConfig();
 
             for (THostIndex host = 0; host < GetHostCount(); ++host) {
-                hostsStat[host].AheadBlocks += vChunk->GetAheadBlocks(host);
-                hostsStat[host].BehindBlocks += vChunk->GetBehindBlocks(host);
-                hostsStat[host].FreshBlocks += vChunk->GetFreshBlocks(host);
+                hostsStat[host].AheadTotalBytes +=
+                    vChunk->GetAheadTotalBytes(host);
+                hostsStat[host].BehindTotalBytes +=
+                    vChunk->GetBehindTotalBytes(host);
+                hostsStat[host].FreshTotalBytes +=
+                    vChunk->GetFreshTotalBytes(host);
             }
         }
     }

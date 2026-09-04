@@ -583,41 +583,38 @@ TCountAndSize TBlocksDirtyMap::GetPBuffersUsage(THostIndex host) const
     return PBufferCounters[host].Current;
 }
 
-TCountAndSize TBlocksDirtyMap::GetAheadBlocks(THostIndex host) const
+ui64 TBlocksDirtyMap::GetAheadTotalBytes(THostIndex host) const
 {
     if (host >= DDiskStates.size()) {
-        return {};
+        return 0;
     }
 
-    TCountAndSize result = DDiskStates[host].GetAheadSegmentsStat();
-    result.Size *= BlockSize;
-    return result;
+    return static_cast<ui64>(DDiskStates[host].GetAheadBlockCount()) *
+           BlockSize;
 }
 
-TCountAndSize TBlocksDirtyMap::GetBehindBlocks(THostIndex host) const
+ui64 TBlocksDirtyMap::GetBehindTotalBytes(THostIndex host) const
 {
     if (host >= DDiskStates.size()) {
-        return {};
+        return 0;
     }
-
-    TCountAndSize result = DDiskStates[host].GetBehindSegmentsStat();
-    result.Size *= BlockSize;
-    return result;
+    if (!DDiskStates[host].IsLagging()) {
+        return 0;
+    }
+    return static_cast<ui64>(DDiskStates[host].GetBehindBlockCount()) *
+           BlockSize;
 }
 
-TCountAndSize TBlocksDirtyMap::GetFreshBlocks(THostIndex host) const
+ui64 TBlocksDirtyMap::GetFreshTotalBytes(THostIndex host) const
 {
     if (host >= DDiskStates.size()) {
-        return {};
+        return 0;
     }
-
     if (DDiskStates[host].IsLagging()) {
-        return {};
+        return 0;
     }
-
-    TCountAndSize result = DDiskStates[host].GetBehindSegmentsStat();
-    result.Size *= BlockSize;
-    return result;
+    return static_cast<ui64>(DDiskStates[host].GetBehindBlockCount()) *
+           BlockSize;
 }
 
 void TBlocksDirtyMap::LockPBuffer(TPBufferKey pBufferKey)

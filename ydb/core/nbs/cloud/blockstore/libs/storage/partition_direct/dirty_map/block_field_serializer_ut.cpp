@@ -16,9 +16,6 @@ void AssertFieldsEqual(
     const TBlockRangeField& actual)
 {
     UNIT_ASSERT_VALUES_EQUAL(expected.Print(), actual.Print());
-    UNIT_ASSERT_VALUES_EQUAL(
-        expected.GetSegmentCount(),
-        actual.GetSegmentCount());
     UNIT_ASSERT_VALUES_EQUAL(expected.GetBlockCount(), actual.GetBlockCount());
 }
 
@@ -52,8 +49,8 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
     Y_UNIT_TEST(ShouldSaveSparseRangesWithRunLengthEncoding)
     {
         TBlockRangeField source;
-        source.Add(TBlockRange64::WithLength(16, 25));
-        source.Add(TBlockRange64::WithLength(42, 5));
+        source.Add(TBlockRange16::WithLength(16, 25));
+        source.Add(TBlockRange16::WithLength(42, 5));
 
         TBlockFieldProto proto;
         SaveBlockField(source, MaxVChunkBlockCount, &proto);
@@ -73,7 +70,7 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
     Y_UNIT_TEST(ShouldEncodeLongRunLengths)
     {
         TBlockRangeField source;
-        source.Add(TBlockRange64::WithLength(255, 510));
+        source.Add(TBlockRange16::WithLength(255, 510));
 
         TBlockFieldProto proto;
         SaveBlockField(source, MaxVChunkBlockCount, &proto);
@@ -95,7 +92,7 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
         for (ui64 blockIndex = 0; blockIndex < MaxVChunkBlockCount;
              blockIndex += 2)
         {
-            source.Add(TBlockRange64::WithLength(blockIndex, 1));
+            source.Add(TBlockRange16::WithLength(blockIndex, 1));
         }
 
         TBlockFieldProto proto;
@@ -115,14 +112,11 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
         AssertFieldsEqual(source, target);
         UNIT_ASSERT_VALUES_EQUAL(
             MaxVChunkBlockCount / 2,
-            target.GetSegmentCount());
-        UNIT_ASSERT_VALUES_EQUAL(
-            MaxVChunkBlockCount / 2,
             target.GetBlockCount());
-        UNIT_ASSERT(target.Overlaps(TBlockRange64::WithLength(0, 1)));
-        UNIT_ASSERT(!target.Overlaps(TBlockRange64::WithLength(1, 1)));
+        UNIT_ASSERT(target.Overlaps(TBlockRange16::WithLength(0, 1)));
+        UNIT_ASSERT(!target.Overlaps(TBlockRange16::WithLength(1, 1)));
         UNIT_ASSERT(target.Overlaps(
-            TBlockRange64::WithLength(MaxVChunkBlockCount - 2, 1)));
+            TBlockRange16::WithLength(MaxVChunkBlockCount - 2, 1)));
     }
 
     Y_UNIT_TEST(ShouldChooseEncodingAtSegmentThreshold)
@@ -134,7 +128,7 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
         for (ui64 segmentIndex = 0; segmentIndex < segmentThreshold;
              ++segmentIndex)
         {
-            field.Add(TBlockRange64::WithLength(segmentIndex * 2, 1));
+            field.Add(TBlockRange16::WithLength(segmentIndex * 2, 1));
         }
 
         TBlockFieldProto proto;
@@ -143,7 +137,7 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
             proto.GetEncodingCase() == TBlockFieldProto::kRunLengthEncoding);
         AssertRestored(field, proto);
 
-        field.Add(TBlockRange64::WithLength(segmentThreshold * 2, 1));
+        field.Add(TBlockRange16::WithLength(segmentThreshold * 2, 1));
         SaveBlockField(field, MaxVChunkBlockCount, &proto);
         UNIT_ASSERT(proto.GetEncodingCase() == TBlockFieldProto::kBitMask);
         AssertRestored(field, proto);
@@ -155,7 +149,7 @@ Y_UNIT_TEST_SUITE(TBlockFieldSerializerTest)
 
         TBlockRangeField field;
         for (ui64 segmentIndex = 0; segmentIndex < 32; ++segmentIndex) {
-            field.Add(TBlockRange64::WithLength(segmentIndex * 16, 1));
+            field.Add(TBlockRange16::WithLength(segmentIndex * 16, 1));
         }
 
         TBlockFieldProto proto;

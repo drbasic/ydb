@@ -70,9 +70,9 @@ public:
     [[nodiscard]] const TVChunkConfig& GetConfig() const;
     [[nodiscard]] TExecutorPtr GetExecutor() const;
     [[nodiscard]] TCountAndSize GetPBuffersUsage(THostIndex hostIndex) const;
-    [[nodiscard]] TCountAndSize GetAheadBlocks(THostIndex hostIndex) const;
-    [[nodiscard]] TCountAndSize GetBehindBlocks(THostIndex hostIndex) const;
-    [[nodiscard]] TCountAndSize GetFreshBlocks(THostIndex hostIndex) const;
+    [[nodiscard]] ui64 GetAheadTotalBytes(THostIndex hostIndex) const;
+    [[nodiscard]] ui64 GetBehindTotalBytes(THostIndex hostIndex) const;
+    [[nodiscard]] ui64 GetFreshTotalBytes(THostIndex hostIndex) const;
 
     // This vchunk's contribution to the tablet-wide cleanup watermark: the
     // smallest record id still held in PBuffers, or nullopt when nothing is
