@@ -51,11 +51,6 @@ TBlockRangeFieldSet::~TBlockRangeFieldSet()
     ::operator delete(Arena);
 }
 
-IBlockRangeFieldImpl::ERealization TBlockRangeFieldSet::GetRealization() const
-{
-    return ERealization::NodeBased;
-}
-
 bool TBlockRangeFieldSet::TryAdd(TRange range, bool* changed)
 {
     *changed = false;
@@ -324,7 +319,7 @@ bool TBlockRangeFieldSet::Empty() const
 
 size_t TBlockRangeFieldSet::GetBlockCount() const
 {
-    return BlockCount;
+    return IntegerCast<ui16>(BlockCount);
 }
 
 size_t TBlockRangeFieldSet::GetSegmentCount() const

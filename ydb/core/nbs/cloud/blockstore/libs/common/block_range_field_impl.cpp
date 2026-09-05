@@ -6,7 +6,13 @@ namespace NYdb::NBS::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString IBlockRangeFieldImpl::Print() const
+TNodeBasedBlockRangeFieldBase::ERealization
+TNodeBasedBlockRangeFieldBase::GetRealization() const
+{
+    return ERealization::NodeBased;
+}
+
+TString TNodeBasedBlockRangeFieldBase::Print() const
 {
     if (GetRealization() != ERealization::NodeBased) {
         return "not implemented";
@@ -22,7 +28,7 @@ TString IBlockRangeFieldImpl::Print() const
     return sb;
 }
 
-void IBlockRangeFieldImpl::Serialize(TString* out) const
+void TNodeBasedBlockRangeFieldBase::Serialize(TString* out) const
 {
     Y_UNUSED(out);
 }

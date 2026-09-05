@@ -27,7 +27,7 @@ namespace NYdb::NBS::NBlockStore {
 // and non-adjacent (they are merged on insertion), so ordering by Start
 // is a total order and Start is a unique BST key.
 class TBlockRangeFieldSet
-    : public IBlockRangeFieldImpl
+    : public TNodeBasedBlockRangeFieldBase
     , public TDisableCopy
 {
 public:
@@ -36,7 +36,6 @@ public:
     TBlockRangeFieldSet();
     ~TBlockRangeFieldSet() override;
 
-    ERealization GetRealization() const override;
     bool TryAdd(TRange range, bool* changed) override;
     bool TryRemove(TRange range, bool* changed) override;
 
@@ -48,7 +47,6 @@ public:
 
     [[nodiscard]] bool Empty() const override;
     [[nodiscard]] size_t GetBlockCount() const override;
-
     [[nodiscard]] size_t GetSegmentCount() const override;
 
 private:

@@ -81,7 +81,7 @@ struct TBlockRange
     {
         Y_DEBUG_ABORT_UNLESS(count);
         if (start < MaxIndex - (count - 1)) {
-            return {start, start + (count - 1)};
+            return {start, static_cast<TBlockIndex>(start + (count - 1))};
         } else {
             return {start, MaxIndex};
         }
@@ -265,6 +265,14 @@ using TBlockRange16Builder = TBlockRangeBuilder<ui16>;
 using TBlockRange32Builder = TBlockRangeBuilder<ui32>;
 using TBlockRange64Builder = TBlockRangeBuilder<ui64>;
 
+// Converts a 64-bit block range to a 16-bit block range with checked casts.
+inline TBlockRange16 ConvertRangeSafe16(const TBlockRange64& range)
+{
+    return TBlockRange16::MakeClosedInterval(
+        IntegerCast<ui16>(range.Start),
+        IntegerCast<ui16>(range.End));
+}
+
 inline TBlockRange32 ConvertRangeSafe(const TBlockRange64& range)
 {
     return TBlockRange32::MakeClosedInterval(
@@ -288,8 +296,9 @@ struct TBlockRangeComparator
     }
 };
 
-using TBlockRangeSet64 = TSet<TBlockRange64, TBlockRangeComparator>;
+using TBlockRangeSet16 = TSet<TBlockRange16, TBlockRangeComparator>;
 using TBlockRangeSet32 = TSet<TBlockRange32, TBlockRangeComparator>;
+using TBlockRangeSet64 = TSet<TBlockRange64, TBlockRangeComparator>;
 
 template <typename T>
 IOutputStream& operator<<(IOutputStream& out, const TBlockRange<T>& rhs)

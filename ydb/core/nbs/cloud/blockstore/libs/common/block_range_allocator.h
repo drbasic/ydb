@@ -1,5 +1,7 @@
 #pragma once
 
+#include <util/generic/utility.h>
+#include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 
 #include <cstddef>
@@ -7,22 +9,30 @@
 
 namespace NYdb::NBS::NBlockStore {
 
-//////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 
-// Lightweight bump allocator backed by a single heap-allocated block.
-// Memory is never freed until the pool is destroyed.
+// Default size of the first chunk allocated by TBlockRangePool.
+inline constexpr size_t DefaultBlockRangePoolChunkSize = 4 * 1024;
+
+////////////////////////////////////////////////////////////////////////////
+
+// Lightweight bump allocator backed by heap-allocated chunks.
+// Individual allocations are never freed, but when the current chunk is
+// exhausted the pool grows by allocating a new (larger) chunk, so it never
+// overflows. Previously allocated chunks stay alive, keeping all issued
+// pointers valid for the pool lifetime.
 class TBlockRangePool
 {
 public:
-    explicit TBlockRangePool(size_t poolSizeBytes)
-        : PoolSize_(poolSizeBytes)
-        , Pool_(static_cast<char*>(::operator new(poolSizeBytes)))
-        , Used_(0)
+    explicit TBlockRangePool(size_t chunkSizeBytes)
+        : ChunkSize_(Max<size_t>(chunkSizeBytes, MinChunkSize))
     {}
 
     ~TBlockRangePool()
     {
-        ::operator delete(Pool_);
+        for (const auto& chunk: Chunks_) {
+            ::operator delete(chunk.Memory);
+        }
     }
 
     // Non-copyable, non-movable (ownership semantics)
@@ -33,15 +43,16 @@ public:
 
     void* Allocate(size_t size)
     {
-        if (Used_ + size > PoolSize_) {
-            ythrow yexception()
-                << "TBlockRangePool exhausted: requested " << size
-                << " bytes, but only " << (PoolSize_ - Used_)
-                << " bytes remaining (of " << PoolSize_ << " total)";
+        if (Chunks_.empty() ||
+            UsedInLastChunk_ + size > Chunks_.back().Capacity)
+        {
+            AddChunk(size);
         }
 
-        void* ptr = Pool_ + Used_;
-        Used_ += size;
+        auto& chunk = Chunks_.back();
+        void* ptr = chunk.Memory + UsedInLastChunk_;
+        UsedInLastChunk_ += size;
+        UsedBytes_ += size;
         return ptr;
     }
 
@@ -50,33 +61,58 @@ public:
 
     size_t GetUsedBytes() const noexcept
     {
-        return Used_;
+        return UsedBytes_;
     }
 
     size_t GetPoolSize() const noexcept
     {
-        return PoolSize_;
+        return CapacityBytes_;
     }
 
     double GetUsagePercent() const noexcept
     {
-        if (!PoolSize_) {
+        if (!CapacityBytes_) {
             return 0;
         }
-        return static_cast<double>(Used_) / static_cast<double>(PoolSize_) *
-               100.0;
+        return static_cast<double>(UsedBytes_) /
+               static_cast<double>(CapacityBytes_) * 100.0;
     }
 
 private:
-    const size_t PoolSize_;
-    char* const Pool_;
-    size_t Used_ = 0;
+    struct TChunk
+    {
+        char* Memory = nullptr;
+        size_t Capacity = 0;
+    };
+
+    void AddChunk(size_t size)
+    {
+        size_t capacity = ChunkSize_;
+        if (!Chunks_.empty()) {
+            capacity = Min<size_t>(Chunks_.back().Capacity * 2, MaxChunkSize);
+        }
+        capacity = Max<size_t>(capacity, size);
+
+        auto* memory = static_cast<char*>(::operator new(capacity));
+        Chunks_.push_back(TChunk{memory, capacity});
+        CapacityBytes_ += capacity;
+        UsedInLastChunk_ = 0;
+    }
+
+    static constexpr size_t MinChunkSize = 256;
+    static constexpr size_t MaxChunkSize = 1 << 20;
+
+    const size_t ChunkSize_;
+    TVector<TChunk> Chunks_;
+    size_t UsedInLastChunk_ = 0;
+    size_t UsedBytes_ = 0;
+    size_t CapacityBytes_ = 0;
 };
 
-//////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 
-// Allocator that references a per-instance TBlockRangePool (raw pointer).
-// The pool is owned by TBlockRangeField::TImpl and outlives the set.
+// Allocator that references a TBlockRangePool (raw pointer).
+// The pool is owned by TBlockRangeField and outlives the set.
 template <class T>
 class TBlockRangeFieldAllocator
 {

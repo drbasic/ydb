@@ -31,13 +31,18 @@ namespace NYdb::NBS::NBlockStore {
 // OutOfMemory().
 
 class TBlockRangeFieldFlatSet
-    : public IBlockRangeFieldImpl
+    : public TNodeBasedBlockRangeFieldBase
     , public TDisableCopy
 {
 public:
-    explicit TBlockRangeFieldFlatSet(ui16 maxSize);
+    static constexpr ui16 DefaultCapacity = 64;
 
-    ERealization GetRealization() const override;
+    TBlockRangeFieldFlatSet()
+        : TBlockRangeFieldFlatSet(DefaultCapacity)
+    {}
+
+    explicit TBlockRangeFieldFlatSet(ui16 maxSegmentCount);
+
     bool TryAdd(TRange range, bool* changed) override;
     bool TryRemove(TRange range, bool* changed) override;
 
@@ -49,15 +54,26 @@ public:
 
     [[nodiscard]] bool Empty() const override;
     [[nodiscard]] size_t GetBlockCount() const override;
-
     [[nodiscard]] size_t GetSegmentCount() const override;
+
+    // Returns true when a previous operation exceeded the segment capacity.
+    // While the flag is set all further additions fail.
+    [[nodiscard]] bool OutOfMemory() const
+    {
+        return OutOfMemory_;
+    }
 
 private:
     void EnsureCapacity();
 
+    // First index of an entry with Start >= key.
+    [[nodiscard]] size_t LowerBound(ui16 key) const;
+
     TVector<TRange> Ranges;
+    const ui16 MaxSegmentCount;
     ui32 RangeCount = 0;
     ui32 BlockCount = 0;
+    bool OutOfMemory_ = false;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

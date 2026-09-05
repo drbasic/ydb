@@ -302,18 +302,25 @@ TCountAndSize TVChunk::GetPBuffersUsage(THostIndex hostIndex) const
     return BlocksDirtyMap->GetPBuffersUsage(hostIndex);
 }
 
-TCountAndSize TVChunk::GetAheadBlocks(THostIndex hostIndex) const
+ui64 TVChunk::GetAheadTotalBytes(THostIndex hostIndex) const
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
-    return BlocksDirtyMap->GetAheadBlocks(hostIndex);
+    return BlocksDirtyMap->GetAheadTotalBytes(hostIndex);
 }
 
-TCountAndSize TVChunk::GetBehindBlocks(THostIndex hostIndex) const
+ui64 TVChunk::GetBehindTotalBytes(THostIndex hostIndex) const
 {
     Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
 
-    return BlocksDirtyMap->GetBehindBlocks(hostIndex);
+    return BlocksDirtyMap->GetBehindTotalBytes(hostIndex);
+}
+
+ui64 TVChunk::GetFreshTotalBytes(THostIndex hostIndex) const
+{
+    Y_ABORT_UNLESS(ExecutorThreadChecker.Check());
+
+    return BlocksDirtyMap->GetFreshTotalBytes(hostIndex);
 }
 
 std::optional<TPBufferKey> TVChunk::GetSafeBarrierForErase() const

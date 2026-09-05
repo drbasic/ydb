@@ -59,7 +59,7 @@ public:
     TBlocksDirtyMap(
         const TVChunkConfig& vChunkConfig,
         ui32 blockSize,
-        ui64 blockCount);
+        ui16 blockCount);
     ~TBlocksDirtyMap() override;
 
     void Load(const TDirtyMapStateProto& proto);
@@ -127,8 +127,9 @@ public:
     [[nodiscard]] const TPBufferCounters& GetPBufferCounters(
         THostIndex host) const;
     [[nodiscard]] TCountAndSize GetPBuffersUsage(THostIndex host) const;
-    [[nodiscard]] TCountAndSize GetAheadBlocks(THostIndex host) const;
-    [[nodiscard]] TCountAndSize GetBehindBlocks(THostIndex host) const;
+    [[nodiscard]] ui64 GetAheadTotalBytes(THostIndex host) const;
+    [[nodiscard]] ui64 GetBehindTotalBytes(THostIndex host) const;
+    [[nodiscard]] ui64 GetFreshTotalBytes(THostIndex host) const;
 
     // ILockableRanges implementation
     void LockPBuffer(TPBufferKey pBufferKey) override;
@@ -223,7 +224,7 @@ private:
         TInflightInfo& inflightInfo);
 
     const ui32 BlockSize;
-    const ui64 BlockCount;
+    const ui16 BlockCount;
 
     THostMask DesiredDDisks;
     THostMask DisabledHosts;

@@ -2,26 +2,28 @@
 
 #include "public.h"
 
-#include "block_range.h"
+#include "block_range_field_impl.h"
+#include "block_range_field_simple.h"
 
 #include <memory>
 
 namespace NYdb::NBS::NBlockStore {
 
-//////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 
+class TBlockRangePool;
+class TBlockRangeFieldTestAccessor;
+
+// Stores zero or one block range inline and uses a pool-backed set for
+// multiple ranges. The pool usage can be observed via GetUsedBytes() and
+// GetPoolSize().
 class TBlockRangeField
 {
 public:
-    enum class EEnumerateContinuation
-    {
-        Continue,
-        Stop,
-    };
-    using TEnumerateFunc =
-        std::function<EEnumerateContinuation(TBlockRange64 item)>;
+    using EEnumerateContinuation = IBlockRangeFieldImpl::EEnumerateContinuation;
+    using TEnumerateFunc = IBlockRangeFieldImpl::TEnumerateFunc;
 
-    explicit TBlockRangeField(size_t poolSize);
+    explicit TBlockRangeField(ui16 maxBlockCount = Max<ui16>());
     ~TBlockRangeField();
 
     // Copying is forbidden: each field owns its own memory pool.
@@ -33,17 +35,17 @@ public:
     TBlockRangeField& operator=(TBlockRangeField&& other) noexcept;
 
     // Returns true if the intervals have actually changed.
-    bool Add(TBlockRange64 range);
+    bool Add(TBlockRange16 range);
     // Returns true if the intervals have actually changed.
     bool Add(const TBlockRangeField& field);
     // Returns true if the intervals have actually changed.
-    bool Remove(TBlockRange64 range);
+    bool Remove(TBlockRange16 range);
     // Returns true if the intervals have actually changed.
     bool Remove(const TBlockRangeField& field);
     // Returns true if the intervals have actually changed.
     bool Clear();
 
-    [[nodiscard]] bool Overlaps(TBlockRange64 other) const;
+    [[nodiscard]] bool Overlaps(TBlockRange16 other) const;
     [[nodiscard]] bool Overlaps(const TBlockRangeField& other) const;
 
     void Enumerate(TEnumerateFunc func) const;
@@ -58,10 +60,16 @@ public:
     [[nodiscard]] size_t GetPoolSize() const;
 
 private:
-    struct TImpl;
-    std::unique_ptr<TImpl> Impl_;
+    friend class TBlockRangeFieldTestAccessor;
+
+    void CollapseImpl();
+
+    ui16 MaxBlockCount;
+    TBlockRangeFieldSimple Simple;
+    std::unique_ptr<TBlockRangePool> Pool;
+    std::unique_ptr<IBlockRangeFieldImpl> Impl;
 };
 
-//////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NYdb::NBS::NBlockStore

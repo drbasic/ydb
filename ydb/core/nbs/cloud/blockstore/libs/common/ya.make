@@ -6,6 +6,8 @@ SRCS(
     block_range_field_flat_set.cpp
     block_range_field_impl.cpp
     block_range_field_set.cpp
+    block_range_field_simple.cpp
+    block_range_field_std_set.cpp
     block_range_map.cpp
     block_range.cpp
     printable_params.cpp
@@ -22,5 +24,6 @@ PEERDIR(
 END()
 
 RECURSE_FOR_TESTS(
+    benchmark
     ut
 )
