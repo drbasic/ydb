@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    arena_allocator.cpp
     block_range_algorithms.cpp
     block_range_field.cpp
     block_range_field_flat_set.cpp
