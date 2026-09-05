@@ -5,11 +5,13 @@
 #include "block_range_field_impl.h"
 #include "block_range_field_simple.h"
 
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator.h>
+
 #include <memory>
 
 namespace NYdb::NBS::NBlockStore {
 
-////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 class TBlockRangePool;
 class TBlockRangeFieldTestAccessor;
@@ -76,6 +78,11 @@ private:
 
     TBlockRangeFieldSimple Simple;
     std::unique_ptr<TBlockRangePool> Pool;
+    // Owns the underlying arena allocator used by backends that allocate
+    // fixed-size chunks (currently TBlockRangeFieldSet).
+    // Must be declared before Impl so that Impl is destroyed before
+    // ArenaAllocator (Impl's backends hold raw pointers into it).
+    std::unique_ptr<IArenaAllocator> ArenaAllocator;
     std::unique_ptr<IBlockRangeFieldImpl> Impl;
 };
 

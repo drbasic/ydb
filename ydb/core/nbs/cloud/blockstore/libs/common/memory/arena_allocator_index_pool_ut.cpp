@@ -342,6 +342,115 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
 
         pool.Deallocate(index);
     }
+
+    Y_UNIT_TEST(MoveSemanticsPreservesIndicesAndData)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t MaxSizeBytes = 2 * SlotSize;
+
+        auto allocator = std::make_unique<TTrackingAllocator>();
+        auto* rawAllocator = allocator.get();
+        TArenaAllocatorIndexPool pool(
+            rawAllocator,
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        // Allocate several chunks and write unique values into them.
+        constexpr size_t Allocated = 4;
+        TVector<ui16> indices;
+        TVector<int> expected;
+        for (size_t i = 0; i < Allocated; ++i) {
+            ui16 index = pool.Allocate();
+            UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != index);
+            int* p = pool.GetAddress<int>(index);
+            UNIT_ASSERT(p);
+            *p = static_cast<int>(i * 10 + 7);
+            indices.push_back(index);
+            expected.push_back(*p);
+        }
+
+        // Snapshot addresses before the move.
+        TVector<void*> addrs;
+        for (ui16 index: indices) {
+            addrs.push_back(pool.GetAddress<void>(index));
+        }
+
+        // Move-construct a new pool from the original one.
+        TArenaAllocatorIndexPool moved(std::move(pool));
+
+        // The original pool must be empty after the move.
+        UNIT_ASSERT(
+            pool.GetAddress<int>(TArenaAllocatorIndexPool::InvalidIndex) ==
+            nullptr);
+
+        // Indices must remain valid and resolve to the same chunk addresses.
+        for (size_t i = 0; i < indices.size(); ++i) {
+            void* p = moved.GetAddress<void>(indices[i]);
+            UNIT_ASSERT_EQUAL(addrs[i], p);
+            int* ip = moved.GetAddress<int>(indices[i]);
+            UNIT_ASSERT_EQUAL(expected[i], *ip);
+        }
+
+        // The moved pool must still be able to allocate and free chunks.
+        ui16 extra = moved.Allocate();
+        UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != extra);
+        moved.Deallocate(extra);
+
+        for (size_t i = 0; i < indices.size(); ++i) {
+            moved.Deallocate(indices[i]);
+        }
+
+        // Memory must be released only when the last pool owning it is
+        // destroyed.
+        UNIT_ASSERT_VALUES_EQUAL(1, rawAllocator->AllocatedBlocks());
+    }
+
+    Y_UNIT_TEST(MoveAssignmentPreservesIndicesAndData)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t MaxSizeBytes = 2 * SlotSize;
+
+        auto allocator = std::make_unique<TTrackingAllocator>();
+        auto* rawAllocator = allocator.get();
+
+        TArenaAllocatorIndexPool source(
+            rawAllocator,
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        ui16 index = source.Allocate();
+        UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != index);
+        int* p = source.GetAddress<int>(index);
+        UNIT_ASSERT(p);
+        *p = 12345;
+
+        void* addrBefore = source.GetAddress<void>(index);
+
+        TArenaAllocatorIndexPool target(
+            rawAllocator,
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        target = std::move(source);
+
+        // The source must be empty after the move-assignment.
+        UNIT_ASSERT(
+            source.GetAddress<int>(TArenaAllocatorIndexPool::InvalidIndex) ==
+            nullptr);
+
+        // The index from the source pool must resolve in the target pool
+        // and contain the same value.
+        void* addrAfter = target.GetAddress<void>(index);
+        UNIT_ASSERT_EQUAL(addrBefore, addrAfter);
+        UNIT_ASSERT_EQUAL(12345, *target.GetAddress<int>(index));
+
+        target.Deallocate(index);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////

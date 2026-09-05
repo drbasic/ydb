@@ -16,7 +16,7 @@ namespace NYdb::NBS::NBlockStore {
 // A fixed-size-chunk pool that hands out ui16 indices instead of pointers.
 // The index encodes the slot and the chunk within the slot, so stable chunk
 // addresses are guaranteed by keeping slots in a vector of unique_ptrs.
-class TArenaAllocatorIndexPool: TDisableCopy
+class TArenaAllocatorIndexPool
 {
 public:
     static constexpr ui16 InvalidIndex = 0xFFFF;
@@ -27,6 +27,12 @@ public:
         size_t maxSizeBytes,
         size_t chunkSize);
     ~TArenaAllocatorIndexPool();
+
+    TArenaAllocatorIndexPool(const TArenaAllocatorIndexPool&) = delete;
+    TArenaAllocatorIndexPool& operator=(
+        const TArenaAllocatorIndexPool&) = delete;
+    TArenaAllocatorIndexPool(TArenaAllocatorIndexPool&&) = default;
+    TArenaAllocatorIndexPool& operator=(TArenaAllocatorIndexPool&&) = default;
 
     // Returns InvalidIndex if the pool is exhausted.
     [[nodiscard]] ui16 Allocate();
@@ -90,12 +96,12 @@ private:
     void AcquireSlot();
     void ReleaseSlot(size_t slotIndex) noexcept;
 
-    const IArenaAllocatorPtr Allocator;
-    const size_t SlotSize;
-    const size_t ChunkSize;
-    const size_t ChunksPerSlot;
+    IArenaAllocatorPtr Allocator;
+    size_t SlotSize;
+    size_t ChunkSize;
+    size_t ChunksPerSlot;
     // Upper bound for the total number of chunks in the pool.
-    const size_t MaxChunks;
+    size_t MaxChunks;
 
     TVector<std::unique_ptr<TSlot>> Slots;
     // Slot currently being carved into chunks.

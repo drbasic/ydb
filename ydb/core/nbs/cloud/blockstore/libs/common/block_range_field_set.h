@@ -3,6 +3,8 @@
 #include "block_range.h"
 #include "block_range_field_impl.h"
 
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator_index_pool.h>
+
 #include <ydb/core/nbs/cloud/storage/core/libs/common/disable_copy.h>
 
 #include <util/generic/string.h>
@@ -11,6 +13,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 
 namespace NYdb::NBS::NBlockStore {
 
@@ -19,7 +22,8 @@ namespace NYdb::NBS::NBlockStore {
 // Memory-optimized interval set for block ranges.
 //
 // Designed for scenarios with millions of instances:
-// - Uses a custom BST backed by a 512-byte arena (64 nodes of 8 bytes each).
+// - Uses a custom BST backed by a TArenaAllocatorIndexPool that hands out
+//   8-byte chunks (a node).
 // - Nodes are linked by 16-bit indices instead of pointers.
 // - Freed nodes are reused via a free list embedded into the nodes.
 //
@@ -28,13 +32,12 @@ namespace NYdb::NBS::NBlockStore {
 // is a total order and Start is a unique BST key.
 class TBlockRangeFieldSet
     : public TNodeBasedBlockRangeFieldBase
-    , public TDisableCopy
+    , public TDisableCopyMove
 {
 public:
     struct TNode;
 
-    TBlockRangeFieldSet();
-    ~TBlockRangeFieldSet() override;
+    explicit TBlockRangeFieldSet(IArenaAllocatorPtr allocator);
 
     [[nodiscard]] EBackend GetBackend() const override;
 
@@ -57,7 +60,7 @@ private:
     ui16 UsedCount = 0;
     ui16 SegmentCount = 0;
     ui32 BlockCount = 0;
-    char* Arena = nullptr;
+    TArenaAllocatorIndexPool Pool;
 
     ui16 AllocNode();
     void FreeNode(ui16 idx);

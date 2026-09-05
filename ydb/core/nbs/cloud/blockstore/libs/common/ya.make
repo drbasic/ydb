@@ -16,6 +16,7 @@ SRCS(
 )
 
 PEERDIR(
+    ydb/core/nbs/cloud/blockstore/libs/common/memory
     ydb/core/nbs/cloud/storage/core/libs/coroutine
     library/cpp/lwtrace
     util

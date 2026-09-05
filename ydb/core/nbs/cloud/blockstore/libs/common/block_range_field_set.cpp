@@ -1,5 +1,7 @@
 #include "block_range_field_set.h"
 
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator.h>
+
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
@@ -12,10 +14,10 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui16 NodeNullIndex = 0xFFFF;
+constexpr ui16 NodeNullIndex = TArenaAllocatorIndexPool::InvalidIndex;
 constexpr size_t NodeSize = 8;
-constexpr size_t ArenaSize = 512;
-constexpr size_t MaxNodeCount = ArenaSize / NodeSize;
+constexpr size_t SlotSize = 512;
+constexpr size_t MaxPoolSize = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -39,17 +41,11 @@ static_assert(NodeSize == sizeof(TBlockRangeFieldSet::TNode));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockRangeFieldSet::TBlockRangeFieldSet()
+TBlockRangeFieldSet::TBlockRangeFieldSet(IArenaAllocatorPtr allocator)
     : Root(NodeNullIndex)
     , FreeHead(NodeNullIndex)
-{
-    Arena = static_cast<char*>(::operator new(ArenaSize));
-}
-
-TBlockRangeFieldSet::~TBlockRangeFieldSet()
-{
-    ::operator delete(Arena);
-}
+    , Pool(allocator, SlotSize, MaxPoolSize, NodeSize)
+{}
 
 IBlockRangeFieldImpl::EBackend TBlockRangeFieldSet::GetBackend() const
 {
@@ -341,10 +337,12 @@ ui16 TBlockRangeFieldSet::AllocNode()
         ++SegmentCount;
         return idx;
     }
-    if (UsedCount >= MaxNodeCount) {
+
+    const ui16 idx = Pool.Allocate();
+    if (idx == NodeNullIndex) {
         return NodeNullIndex;
     }
-    const ui16 idx = UsedCount++;
+    ++UsedCount;
     GetNode(idx)->Init();
     ++SegmentCount;
     return idx;
@@ -359,20 +357,17 @@ void TBlockRangeFieldSet::FreeNode(ui16 idx)
     FreeHead = idx;
     --SegmentCount;
     BlockCount -= GetNode(idx)->Range.Size();
+    Pool.Deallocate(idx);
 }
 
 TBlockRangeFieldSet::TNode* TBlockRangeFieldSet::GetNode(ui16 idx)
 {
-    return idx == NodeNullIndex
-               ? nullptr
-               : reinterpret_cast<TNode*>(Arena + idx * NodeSize);
+    return Pool.GetAddress<TNode>(idx);
 }
 
 const TBlockRangeFieldSet::TNode* TBlockRangeFieldSet::GetNode(ui16 idx) const
 {
-    return idx == NodeNullIndex
-               ? nullptr
-               : reinterpret_cast<const TNode*>(Arena + idx * NodeSize);
+    return Pool.GetAddress<const TNode>(idx);
 }
 
 ui16 TBlockRangeFieldSet::FindLowerBoundNode(ui16 key) const
