@@ -6,6 +6,7 @@
 
 #include <util/generic/vector.h>
 
+#include <cstring>
 #include <memory>
 #include <unordered_set>
 
@@ -450,6 +451,147 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         UNIT_ASSERT_EQUAL(12345, *target.GetAddress<int>(index));
 
         target.Deallocate(index);
+    }
+
+    Y_UNIT_TEST(FreedMemoryIsZeroedOnReuse)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t MaxSizeBytes = SlotSize;
+
+        TArenaAllocatorIndexPool pool(
+            CreateArenaAllocator(),
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        // Allocate, write pattern, free.
+        ui16 index1 = pool.Allocate();
+        UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != index1);
+        int* ptr1 = pool.GetAddress<int>(index1);
+        UNIT_ASSERT(ptr1);
+        // Write a non-zero byte pattern through the chunk memory.
+        void* chunkAddr = pool.GetAddress<void>(index1);
+        std::memset(chunkAddr, 0xFF, ChunkSize);
+        pool.Deallocate(index1);
+
+        // Re-allocate and check zeroed.
+        ui16 index2 = pool.Allocate();
+        UNIT_ASSERT_EQUAL(index1, index2);
+
+        char* data = static_cast<char*>(pool.GetAddress<void>(index2));
+        for (size_t i = 0; i < ChunkSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        pool.Deallocate(index2);
+    }
+
+    Y_UNIT_TEST(MultipleFreeAllocCyclesZeroed)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 1024;
+        constexpr size_t MaxSizeBytes = SlotSize;
+        constexpr int Cycles = 5;
+
+        TArenaAllocatorIndexPool pool(
+            CreateArenaAllocator(),
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        for (int cycle = 0; cycle < Cycles; ++cycle) {
+            ui16 index = pool.Allocate();
+            UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != index);
+            void* chunkAddr = pool.GetAddress<void>(index);
+            UNIT_ASSERT(chunkAddr);
+
+            if (cycle > 0) {
+                char* data = static_cast<char*>(chunkAddr);
+                for (size_t i = 0; i < ChunkSize; ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        0,
+                        static_cast<unsigned char>(data[i]));
+                }
+            }
+
+            std::memset(chunkAddr, 0xAA, ChunkSize);
+            pool.Deallocate(index);
+        }
+    }
+
+    Y_UNIT_TEST(ZeroedAfterSlotReclaimAndReallocate)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
+        constexpr size_t MaxSizeBytes = 2 * SlotSize;
+
+        TArenaAllocatorIndexPool pool(
+            CreateArenaAllocator(),
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        TVector<ui16> indices;
+        indices.reserve(ChunksPerSlot);
+        for (size_t i = 0; i < ChunksPerSlot; ++i) {
+            indices.push_back(pool.Allocate());
+            void* chunkAddr = pool.GetAddress<void>(indices.back());
+            std::memset(chunkAddr, 0xFF, ChunkSize);
+        }
+
+        // Free all chunks — slot memory stays alive in index pool.
+        for (ui16 index: indices) {
+            pool.Deallocate(index);
+        }
+
+        // Re-allocate and check zeroed.
+        ui16 index = pool.Allocate();
+        UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != index);
+        char* data = static_cast<char*>(pool.GetAddress<void>(index));
+        for (size_t i = 0; i < ChunkSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        pool.Deallocate(index);
+    }
+
+    Y_UNIT_TEST(ZeroedAcrossMultipleSlots)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
+        constexpr size_t MaxSizeBytes = 4 * SlotSize;
+
+        TArenaAllocatorIndexPool pool(
+            CreateArenaAllocator(),
+            SlotSize,
+            MaxSizeBytes,
+            ChunkSize);
+
+        // Allocate from two slots and write patterns.
+        TVector<ui16> indices;
+        for (size_t i = 0; i < 2 * ChunksPerSlot; ++i) {
+            indices.push_back(pool.Allocate());
+            void* chunkAddr = pool.GetAddress<void>(indices.back());
+            std::memset(chunkAddr, 0xBB, ChunkSize);
+        }
+
+        // Free all chunks from the first slot.
+        for (size_t i = 0; i < ChunksPerSlot; ++i) {
+            pool.Deallocate(indices[i]);
+        }
+
+        // Allocate in the first slot — should be zeroed.
+        ui16 index = pool.Allocate();
+        UNIT_ASSERT(TArenaAllocatorIndexPool::InvalidIndex != index);
+        char* data = static_cast<char*>(pool.GetAddress<void>(index));
+        for (size_t i = 0; i < ChunkSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        pool.Deallocate(index);
     }
 }
 

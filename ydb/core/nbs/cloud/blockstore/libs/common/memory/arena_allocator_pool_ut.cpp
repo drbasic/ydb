@@ -6,6 +6,7 @@
 
 #include <util/generic/vector.h>
 
+#include <cstring>
 #include <memory>
 #include <unordered_set>
 
@@ -168,6 +169,119 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
             pool.Deallocate(ptrs[i]);
         }
         UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+    }
+
+    Y_UNIT_TEST(FreedMemoryIsZeroedOnReuse)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+
+        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+
+        // Allocate, write pattern, free.
+        void* ptr1 = pool.Allocate(ChunkSize);
+        UNIT_ASSERT(ptr1);
+        std::memset(ptr1, 0xFF, ChunkSize);
+        pool.Deallocate(ptr1);
+
+        // Re-allocate and check zeroed.
+        void* ptr2 = pool.Allocate(ChunkSize);
+        UNIT_ASSERT_EQUAL(ptr1, ptr2);
+
+        char* data = static_cast<char*>(ptr2);
+        for (size_t i = 0; i < ChunkSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        pool.Deallocate(ptr2);
+    }
+
+    Y_UNIT_TEST(MultipleFreeAllocCyclesZeroed)
+    {
+        constexpr size_t ChunkSize = 1024;
+        constexpr int Cycles = 5;
+
+        TArenaAllocatorPool pool(CreateArenaAllocator(), 4096, ChunkSize);
+
+        for (int cycle = 0; cycle < Cycles; ++cycle) {
+            void* ptr = pool.Allocate(ChunkSize);
+            UNIT_ASSERT(ptr);
+
+            if (cycle > 0) {
+                char* data = static_cast<char*>(ptr);
+                for (size_t i = 0; i < ChunkSize; ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        0,
+                        static_cast<unsigned char>(data[i]));
+                }
+            }
+
+            std::memset(ptr, 0xAA, ChunkSize);
+            pool.Deallocate(ptr);
+        }
+    }
+
+    Y_UNIT_TEST(ZeroedAfterSlotReclaimAndReallocate)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
+
+        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+
+        TVector<void*> ptrs;
+        ptrs.reserve(ChunksPerSlot);
+        for (size_t i = 0; i < ChunksPerSlot; ++i) {
+            ptrs.push_back(pool.Allocate(ChunkSize));
+            UNIT_ASSERT(ptrs.back());
+            std::memset(ptrs.back(), 0xFF, ChunkSize);
+        }
+
+        // Free everything — slot should be reclaimed.
+        for (void* p: ptrs) {
+            pool.Deallocate(p);
+        }
+
+        // Re-allocate and check zeroed.
+        void* ptr = pool.Allocate(ChunkSize);
+        UNIT_ASSERT(ptr);
+        char* data = static_cast<char*>(ptr);
+        for (size_t i = 0; i < ChunkSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        pool.Deallocate(ptr);
+    }
+
+    Y_UNIT_TEST(ZeroedAcrossMultipleSlots)
+    {
+        constexpr size_t SlotSize = 4096;
+        constexpr size_t ChunkSize = 512;
+        constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
+
+        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+
+        // Allocate from two slots.
+        TVector<void*> ptrs;
+        for (size_t i = 0; i < 2 * ChunksPerSlot; ++i) {
+            ptrs.push_back(pool.Allocate(ChunkSize));
+            std::memset(ptrs.back(), 0xBB, ChunkSize);
+        }
+
+        // Free all from first slot — it gets reclaimed.
+        for (size_t i = 0; i < ChunksPerSlot; ++i) {
+            pool.Deallocate(ptrs[i]);
+        }
+
+        // Allocate in the reclaimed slot — should be zeroed.
+        void* ptr = pool.Allocate(ChunkSize);
+        UNIT_ASSERT(ptr);
+        char* data = static_cast<char*>(ptr);
+        for (size_t i = 0; i < ChunkSize; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        pool.Deallocate(ptr);
     }
 }
 

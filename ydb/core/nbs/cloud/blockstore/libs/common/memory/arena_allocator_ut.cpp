@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cstring>
 #include <memory>
 #include <thread>
 
@@ -129,6 +130,120 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
         UNIT_ASSERT_VALUES_EQUAL(0, failed.load());
         UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
         UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedSize());
+    }
+
+    Y_UNIT_TEST(FreedMemoryIsZeroedOnReuse)
+    {
+        constexpr size_t Size = 1024;
+
+        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+
+        // Allocate, write non-zero pattern, free.
+        void* ptr1 = allocator->Allocate(Size);
+        UNIT_ASSERT(ptr1);
+        std::memset(ptr1, 0xFF, Size);
+        allocator->DeAllocate(ptr1);
+
+        // Re-allocate the same slot and check it is zeroed.
+        void* ptr2 = allocator->Allocate(Size);
+        UNIT_ASSERT_EQUAL(ptr1, ptr2);
+
+        char* data = static_cast<char*>(ptr2);
+        for (size_t i = 0; i < Size; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        allocator->DeAllocate(ptr2);
+    }
+
+    Y_UNIT_TEST(AllSlotSizesMemoryIsZeroedOnReuse)
+    {
+        constexpr size_t SlotSizes[] = {512, 1024, 2048, 4096};
+
+        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+
+        for (size_t slotSize: SlotSizes) {
+            // First allocation: write pattern, free.
+            void* ptr1 = allocator->Allocate(slotSize);
+            UNIT_ASSERT(ptr1);
+            std::memset(ptr1, 0xFF, slotSize);
+            allocator->DeAllocate(ptr1);
+
+            // Second allocation: must be zeroed.
+            void* ptr2 = allocator->Allocate(slotSize);
+            UNIT_ASSERT_EQUAL(ptr1, ptr2);
+
+            char* data = static_cast<char*>(ptr2);
+            for (size_t i = 0; i < slotSize; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    static_cast<unsigned char>(data[i]));
+            }
+
+            allocator->DeAllocate(ptr2);
+        }
+    }
+
+    Y_UNIT_TEST(MultipleFreeAllocCyclesZeroed)
+    {
+        constexpr size_t Size = 2048;
+        constexpr int Cycles = 5;
+
+        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+
+        for (int cycle = 0; cycle < Cycles; ++cycle) {
+            void* ptr = allocator->Allocate(Size);
+            UNIT_ASSERT(ptr);
+
+            if (cycle > 0) {
+                // After the first cycle, memory should be zeroed.
+                char* data = static_cast<char*>(ptr);
+                for (size_t i = 0; i < Size; ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        0,
+                        static_cast<unsigned char>(data[i]));
+                }
+            }
+
+            // Write a non-zero pattern before freeing.
+            std::memset(ptr, 0xAA, Size);
+            allocator->DeAllocate(ptr);
+        }
+    }
+
+    Y_UNIT_TEST(ZeroedAfterBlockReclaimAndReallocate)
+    {
+        // Fill a block, free everything so the block is returned to the
+        // system, then re-allocate: the new block should be fresh (zeroed).
+        constexpr size_t Size = 512;
+        constexpr size_t BlockSlots = 256;   // BlockSize(1MB) / 512
+
+        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+
+        TVector<void*> ptrs;
+        ptrs.reserve(BlockSlots);
+        for (size_t i = 0; i < BlockSlots; ++i) {
+            ptrs.push_back(allocator->Allocate(Size));
+            UNIT_ASSERT(ptrs.back());
+            std::memset(ptrs.back(), 0xFF, Size);
+        }
+
+        // Free everything — the block should be reclaimed.
+        for (void* p: ptrs) {
+            allocator->DeAllocate(p);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedSize());
+
+        // Re-allocate one chunk and check it's zeroed.
+        void* ptr = allocator->Allocate(Size);
+        UNIT_ASSERT(ptr);
+        char* data = static_cast<char*>(ptr);
+        for (size_t i = 0; i < Size; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(0, static_cast<unsigned char>(data[i]));
+        }
+
+        allocator->DeAllocate(ptr);
     }
 }
 

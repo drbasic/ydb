@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 
 namespace NYdb::NBS::NBlockStore {
 
@@ -72,7 +73,9 @@ public:
         : Base(AlignedAlloc(BlockSize, 8))
         , SlotSize(slotSize)
         , SlotsPerBlock(BlockSize / slotSize)
-    {}
+    {
+        std::memset(Base, 0, BlockSize);
+    }
 
     ~TBlock()
     {
@@ -94,7 +97,7 @@ public:
         if (FreeList) {
             TSlot* result = FreeList;
             FreeList = FreeList->Next;
-            result->Next = nullptr;
+            std::memset(result, 0, SlotSize);
             --FreeCount;
             return result;
         }

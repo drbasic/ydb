@@ -3,6 +3,8 @@
 #include <util/generic/algorithm.h>
 #include <util/system/yassert.h>
 
+#include <cstring>
+
 namespace NYdb::NBS::NBlockStore {
 
 //////////////////////////////////////////////////////////////////////////////
@@ -32,7 +34,7 @@ void* TArenaAllocatorPool::TSlot::Allocate()
     if (FreeList) {
         TFreeChunk* result = FreeList;
         FreeList = FreeList->Next;
-        result->Next = nullptr;
+        std::memset(result, 0, ChunkSize);
         --FreeCount;
         return result;
     }
