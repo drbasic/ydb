@@ -18,6 +18,8 @@ public:
     [[nodiscard]] virtual size_t AllocatedSize() const = 0;
 };
 
+using IArenaAllocatorPtr = IArenaAllocator*;
+
 //////////////////////////////////////////////////////////////////////////////
 
 IArenaAllocator* CreateArenaAllocator();
