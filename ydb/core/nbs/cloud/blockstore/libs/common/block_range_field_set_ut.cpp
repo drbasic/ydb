@@ -804,6 +804,57 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         // Node size is 8 bytes, so one range = 8 bytes
         UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
     }
+
+    Y_UNIT_TEST(AddAdjacentToMaxEndRange)
+    {
+        // Range with End = 65535 (ui16 max). Adding an adjacent range
+        // [65534..65534] should merge with [65535..65535] because they are
+        // adjacent. But 65535 + 1 overflows to 0, so the adjacency check
+        // on line 83: End + 1 >= range.Start becomes 0 >= 65534 = false.
+        // This is a known overflow issue.
+        TBlockRangeFieldSet f;
+        bool changed = false;
+
+        // Add a range ending at ui16 max.
+        UNIT_ASSERT(f.TryAdd(R(65535, 65535), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetSegmentCount());
+        UNIT_ASSERT_VALUES_EQUAL(1u, f.GetBlockCount());
+
+        // Try to add an adjacent range. Since End + 1 overflows, the merge
+        // may not happen as expected.
+        changed = false;
+        UNIT_ASSERT(f.TryAdd(R(65534, 65534), &changed));
+        // With the overflow bug, this may not merge correctly.
+        // The range [65534..65534] should merge with [65535..65535] into
+        // [65534..65535].
+        UNIT_ASSERT(changed);
+        auto v = Collect(f);
+        UNIT_ASSERT_VALUES_EQUAL(1u, v.size());
+        UNIT_ASSERT_VALUES_EQUAL(R(65534, 65535), v[0]);
+    }
+
+    Y_UNIT_TEST(RemoveWithMaxEndRange)
+    {
+        // Test remove when a range ends at ui16 max.
+        TBlockRangeFieldSet f;
+        bool changed = false;
+
+        UNIT_ASSERT(f.TryAdd(R(65533, 65535), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL(3u, f.GetBlockCount());
+
+        // Remove the last block. This requires setting Start = 65535 + 1
+        // which overflows to 0. The resulting range [65533..65534] should
+        // remain valid.
+        changed = false;
+        UNIT_ASSERT(f.TryRemove(R(65535, 65535), &changed));
+        UNIT_ASSERT(changed);
+        auto v = Collect(f);
+        UNIT_ASSERT_VALUES_EQUAL(1u, v.size());
+        UNIT_ASSERT_VALUES_EQUAL(R(65533, 65534), v[0]);
+        UNIT_ASSERT_VALUES_EQUAL(2u, f.GetBlockCount());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

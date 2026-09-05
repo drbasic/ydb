@@ -80,10 +80,13 @@ bool TBlockRangeFieldSet::TryAdd(TRange range, bool* changed)
     const ui16 lower = FindLowerBoundNode(range.Start);
 
     ui16 first = NodeNullIndex;
-    if (pred != NodeNullIndex && GetNode(pred)->Range.End + 1 >= range.Start) {
+    if (pred != NodeNullIndex &&
+        static_cast<ui32>(GetNode(pred)->Range.End) + 1 >= range.Start)
+    {
         first = pred;
     } else if (
-        lower != NodeNullIndex && GetNode(lower)->Range.Start <= range.End + 1)
+        lower != NodeNullIndex &&
+        static_cast<ui32>(GetNode(lower)->Range.Start) <= range.End + 1)
     {
         first = lower;
     }
@@ -121,7 +124,7 @@ bool TBlockRangeFieldSet::TryAdd(TRange range, bool* changed)
     ui16 current = FindNextGreaterNode(mergedStart);
     while (current != NodeNullIndex) {
         const TNode* node = GetNode(current);
-        if (node->Range.Start > mergedEnd + 1) {
+        if (node->Range.Start > static_cast<ui32>(mergedEnd) + 1) {
             // Gap found — the rest of the tree is guaranteed non-adjacent.
             break;
         }
@@ -218,7 +221,7 @@ bool TBlockRangeFieldSet::TryRemove(TRange range, bool* changed)
             // Update block count: remove the trimmed portion from the left
             // node.
             const size_t oldNodeSize = GetNode(current)->Range.Size();
-            GetNode(current)->Range.End = range.Start - 1;
+            GetNode(current)->Range.End = range.Start > 0 ? range.Start - 1 : 0;
             BlockCount -= (oldNodeSize - GetNode(current)->Range.Size());
             GetNode(idx)->Range =
                 TRange::MakeClosedInterval(range.End + 1, nodeEnd);
@@ -229,7 +232,7 @@ bool TBlockRangeFieldSet::TryRemove(TRange range, bool* changed)
             // Overlap on the left: trim the right edge in place.
             // The key (Start) does not change, the order is preserved.
             const size_t oldNodeSize = GetNode(current)->Range.Size();
-            GetNode(current)->Range.End = range.Start - 1;
+            GetNode(current)->Range.End = range.Start > 0 ? range.Start - 1 : 0;
             BlockCount -= (oldNodeSize - GetNode(current)->Range.Size());
             *changed = true;
             current = FindNextGreaterNode(nodeStart);
@@ -240,7 +243,8 @@ bool TBlockRangeFieldSet::TryRemove(TRange range, bool* changed)
             // The new Start is still greater than the previous node's End
             // and less than the next node's Start, so the order holds.
             const size_t oldNodeSize = GetNode(current)->Range.Size();
-            GetNode(current)->Range.Start = range.End + 1;
+            GetNode(current)->Range.Start =
+                range.End < Max<ui16>() ? range.End + 1 : Max<ui16>();
             BlockCount -= (oldNodeSize - GetNode(current)->Range.Size());
             *changed = true;
             break;
