@@ -17,6 +17,31 @@ constexpr ui16 BlockCount = 32768;
 constexpr ui32 RemoveRangeLength = 256;
 constexpr size_t AdjacentRangeBatchSize = 10;
 
+// Backends the benchmarks are run against. Every benchmark below is
+// registered once per entry of this array.
+static constexpr std::array SupportedBackends = {
+    TBlockRangeField::EBackend::StdSet,
+    TBlockRangeField::EBackend::Set,
+    TBlockRangeField::EBackend::FlatSet,
+};
+
+TString BackendName(TBlockRangeField::EBackend backend)
+{
+    switch (backend) {
+        case TBlockRangeField::EBackend::Simple:
+            return "Simple";
+        case TBlockRangeField::EBackend::StdSet:
+            return "StdSet";
+        case TBlockRangeField::EBackend::Set:
+            return "Set";
+        case TBlockRangeField::EBackend::FlatSet:
+            return "FlatSet";
+        case TBlockRangeField::EBackend::Bitmask:
+            return "Bitmask";
+    }
+    Y_ABORT("Unknown backend");
+}
+
 // Describes what percentage of generated ranges has the specified length.
 struct TRangeSizeShare
 {
@@ -117,13 +142,15 @@ TVector<TBlockRange16> MakeRemoveRanges()
 
 // Measures inserting a batch of reproducible random ranges. Range generation,
 // field construction and destruction are excluded from the timed section.
-static void BM_BlockRangeFieldAdd(benchmark::State& state)
+static void BM_BlockRangeFieldAdd(
+    benchmark::State& state,
+    TBlockRangeField::EBackend backend)
 {
     const auto ranges = MakeInsertRanges(state.range(0), RangeSizeDistribution);
 
     for (auto _: state) {
         state.PauseTiming();
-        auto field = std::make_unique<TBlockRangeField>(BlockCount);
+        auto field = std::make_unique<TBlockRangeField>(BlockCount, backend);
         state.ResumeTiming();
 
         for (const auto& range: ranges) {
@@ -138,22 +165,18 @@ static void BM_BlockRangeFieldAdd(benchmark::State& state)
     state.SetItemsProcessed(state.iterations() * ranges.size());
 }
 
-BENCHMARK(BM_BlockRangeFieldAdd)
-    ->Arg(1000)
-    ->Arg(2000)
-    ->Arg(5000)
-    ->Unit(benchmark::kMicrosecond);
-
 // Measures batches where one range is placed randomly and the next nine
 // ranges are added immediately to its right.
-static void BM_BlockRangeFieldAddRightAdjacent(benchmark::State& state)
+static void BM_BlockRangeFieldAddRightAdjacent(
+    benchmark::State& state,
+    TBlockRangeField::EBackend backend)
 {
     const auto ranges =
         MakeRightAdjacentRanges(state.range(0), RangeSizeDistribution);
 
     for (auto _: state) {
         state.PauseTiming();
-        auto field = std::make_unique<TBlockRangeField>(BlockCount);
+        auto field = std::make_unique<TBlockRangeField>(BlockCount, backend);
         state.ResumeTiming();
 
         for (const auto& range: ranges) {
@@ -168,22 +191,18 @@ static void BM_BlockRangeFieldAddRightAdjacent(benchmark::State& state)
     state.SetItemsProcessed(state.iterations() * ranges.size());
 }
 
-BENCHMARK(BM_BlockRangeFieldAddRightAdjacent)
-    ->Arg(1000)
-    ->Arg(2000)
-    ->Arg(5000)
-    ->Unit(benchmark::kMicrosecond);
-
 // Measures adding consecutive blocks one at a time. Field construction and
 // destruction are excluded from the timed section.
-static void BM_BlockRangeFieldAddSequentialBlocks(benchmark::State& state)
+static void BM_BlockRangeFieldAddSequentialBlocks(
+    benchmark::State& state,
+    TBlockRangeField::EBackend backend)
 {
     const auto blockCount = static_cast<ui16>(state.range(0));
     Y_ABORT_UNLESS(blockCount <= BlockCount);
 
     for (auto _: state) {
         state.PauseTiming();
-        auto field = std::make_unique<TBlockRangeField>(BlockCount);
+        auto field = std::make_unique<TBlockRangeField>(BlockCount, backend);
         state.ResumeTiming();
 
         for (ui16 blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
@@ -198,20 +217,18 @@ static void BM_BlockRangeFieldAddSequentialBlocks(benchmark::State& state)
     state.SetItemsProcessed(state.iterations() * blockCount);
 }
 
-BENCHMARK(BM_BlockRangeFieldAddSequentialBlocks)
-    ->Arg(32768)
-    ->Unit(benchmark::kMicrosecond);
-
 // Measures removing the whole block space in consecutive 256-block ranges.
 // Random field population and destruction are excluded from the timed section.
-static void BM_BlockRangeFieldRemove(benchmark::State& state)
+static void BM_BlockRangeFieldRemove(
+    benchmark::State& state,
+    TBlockRangeField::EBackend backend)
 {
     const auto ranges = MakeInsertRanges(state.range(0), RangeSizeDistribution);
     const auto removeRanges = MakeRemoveRanges();
 
     for (auto _: state) {
         state.PauseTiming();
-        auto field = std::make_unique<TBlockRangeField>(BlockCount);
+        auto field = std::make_unique<TBlockRangeField>(BlockCount, backend);
         for (const auto& range: ranges) {
             field->Add(range);
         }
@@ -229,9 +246,52 @@ static void BM_BlockRangeFieldRemove(benchmark::State& state)
     state.SetItemsProcessed(state.iterations() * removeRanges.size());
 }
 
-BENCHMARK(BM_BlockRangeFieldRemove)
-    ->Arg(0)
-    ->Arg(1000)
-    ->Arg(2000)
-    ->Arg(5000)
-    ->Unit(benchmark::kMicrosecond);
+namespace {
+
+// Registers every benchmark once per backend from SupportedBackends. Runs
+// during static initialization, before main(), just like the BENCHMARK()
+// macro does.
+const auto RegisteredBenchmarks = []()
+{
+    for (const auto backend: SupportedBackends) {
+        const TString suffix = "/" + BackendName(backend);
+
+        benchmark::RegisterBenchmark(
+            ("BM_BlockRangeFieldAdd" + suffix).c_str(),
+            BM_BlockRangeFieldAdd,
+            backend)
+            ->Arg(1000)
+            ->Arg(2000)
+            ->Arg(5000)
+            ->Unit(benchmark::kMicrosecond);
+
+        benchmark::RegisterBenchmark(
+            ("BM_BlockRangeFieldAddRightAdjacent" + suffix).c_str(),
+            BM_BlockRangeFieldAddRightAdjacent,
+            backend)
+            ->Arg(1000)
+            ->Arg(2000)
+            ->Arg(5000)
+            ->Unit(benchmark::kMicrosecond);
+
+        benchmark::RegisterBenchmark(
+            ("BM_BlockRangeFieldAddSequentialBlocks" + suffix).c_str(),
+            BM_BlockRangeFieldAddSequentialBlocks,
+            backend)
+            ->Arg(32768)
+            ->Unit(benchmark::kMicrosecond);
+
+        benchmark::RegisterBenchmark(
+            ("BM_BlockRangeFieldRemove" + suffix).c_str(),
+            BM_BlockRangeFieldRemove,
+            backend)
+            ->Arg(0)
+            ->Arg(1000)
+            ->Arg(2000)
+            ->Arg(5000)
+            ->Unit(benchmark::kMicrosecond);
+    }
+    return 0;
+}();
+
+}   // namespace

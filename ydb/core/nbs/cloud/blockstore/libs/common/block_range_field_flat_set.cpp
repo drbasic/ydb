@@ -49,6 +49,11 @@ void TBlockRangeFieldFlatSet::EnsureCapacity()
     }
 }
 
+IBlockRangeFieldImpl::EBackend TBlockRangeFieldFlatSet::GetBackend() const
+{
+    return EBackend::FlatSet;
+}
+
 bool TBlockRangeFieldFlatSet::TryAdd(TRange range, bool* changed)
 {
     *changed = false;

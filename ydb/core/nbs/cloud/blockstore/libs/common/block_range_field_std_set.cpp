@@ -19,6 +19,11 @@ TBlockRangeFieldStdSet::TBlockRangeFieldStdSet(
           TAllocator(pool ? pool : OwnPool.get()))
 {}
 
+IBlockRangeFieldImpl::EBackend TBlockRangeFieldStdSet::GetBackend() const
+{
+    return EBackend::StdSet;
+}
+
 bool TBlockRangeFieldStdSet::TryAdd(TBlockRange16 range, bool* changed)
 {
     Y_ABORT_UNLESS(range.End < MaxBlockCount);

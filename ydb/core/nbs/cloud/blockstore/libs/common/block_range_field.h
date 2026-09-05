@@ -14,16 +14,19 @@ namespace NYdb::NBS::NBlockStore {
 class TBlockRangePool;
 class TBlockRangeFieldTestAccessor;
 
-// Stores zero or one block range inline and uses a pool-backed set for
+// Stores zero or one block range inline and uses the selected backend for
 // multiple ranges. The pool usage can be observed via GetUsedBytes() and
 // GetPoolSize().
 class TBlockRangeField
 {
 public:
+    using EBackend = IBlockRangeFieldImpl::EBackend;
     using EEnumerateContinuation = IBlockRangeFieldImpl::EEnumerateContinuation;
     using TEnumerateFunc = IBlockRangeFieldImpl::TEnumerateFunc;
 
-    explicit TBlockRangeField(ui16 maxBlockCount = Max<ui16>());
+    explicit TBlockRangeField(
+        ui16 maxBlockCount = Max<ui16>(),
+        EBackend preferredBackend = EBackend::StdSet);
     ~TBlockRangeField();
 
     // Copying is forbidden: each field owns its own memory pool.
@@ -55,6 +58,10 @@ public:
     [[nodiscard]] size_t GetSegmentCount() const;
     [[nodiscard]] TString Print() const;
 
+    // Returns the backend currently used for storage: Simple while the field
+    // holds at most one range, the preferred backend after the switch.
+    [[nodiscard]] EBackend GetBackend() const;
+
     // Memory pool accessors (for tests and diagnostics).
     [[nodiscard]] size_t GetUsedBytes() const;
     [[nodiscard]] size_t GetPoolSize() const;
@@ -65,6 +72,8 @@ private:
     void CollapseImpl();
 
     ui16 MaxBlockCount;
+    EBackend PreferredBackend;
+
     TBlockRangeFieldSimple Simple;
     std::unique_ptr<TBlockRangePool> Pool;
     std::unique_ptr<IBlockRangeFieldImpl> Impl;

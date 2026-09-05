@@ -4,6 +4,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/array_ref.h>
 #include <util/generic/vector.h>
 
 namespace NYdb::NBS::NBlockStore {
@@ -85,6 +86,62 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     // -------------------------------------------------------------------------
     // Memory measurement tests
+
+    Y_UNIT_TEST(ShouldUsePreferredBackendAfterSwitch)
+    {
+        static constexpr std::array backends = {
+            TBlockRangeField::EBackend::StdSet,
+            TBlockRangeField::EBackend::Set,
+            TBlockRangeField::EBackend::FlatSet};
+
+        for (const auto backend: backends) {
+            TBlockRangeField f(Max<ui16>(), backend);
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToString(int(TBlockRangeField::EBackend::Simple)),
+                ToString(int(f.GetBackend())));
+
+            f.Add(R(10, 20));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToString(int(TBlockRangeField::EBackend::Simple)),
+                ToString(int(f.GetBackend())));
+
+            // The second disjoint range triggers the switch to the preferred
+            // backend.
+            f.Add(R(30, 40));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToString(int(backend)),
+                ToString(int(f.GetBackend())));
+            UNIT_ASSERT_VALUES_EQUAL("[10..20][30..40]", f.Print());
+
+            // The backend is kept while the field is not empty; it returns
+            // to Simple only after the field is fully collapsed.
+            f.Remove(R(30, 40));
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToString(int(backend)),
+                ToString(int(f.GetBackend())));
+
+            f.Clear();
+            UNIT_ASSERT_VALUES_EQUAL(
+                ToString(int(TBlockRangeField::EBackend::Simple)),
+                ToString(int(f.GetBackend())));
+        }
+    }
+
+    Y_UNIT_TEST(MoveSemanticsPreservesPreferredBackend)
+    {
+        TBlockRangeField f1(Max<ui16>(), TBlockRangeField::EBackend::Set);
+        UNIT_ASSERT(f1.Add(R(0, 10)));
+        UNIT_ASSERT(f1.Add(R(20, 30)));
+        UNIT_ASSERT_VALUES_EQUAL(
+            ToString(int(TBlockRangeField::EBackend::Set)),
+            ToString(int(f1.GetBackend())));
+
+        TBlockRangeField f2 = std::move(f1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            ToString(int(TBlockRangeField::EBackend::Set)),
+            ToString(int(f2.GetBackend())));
+        UNIT_ASSERT_VALUES_EQUAL("[0..10][20..30]", f2.Print());
+    }
 
     Y_UNIT_TEST(MemoryPerSingleRange)
     {

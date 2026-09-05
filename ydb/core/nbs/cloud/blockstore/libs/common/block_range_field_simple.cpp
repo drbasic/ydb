@@ -19,6 +19,11 @@ bool AreConnected(TBlockRange16 left, TBlockRange16 right)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+IBlockRangeFieldImpl::EBackend TBlockRangeFieldSimple::GetBackend() const
+{
+    return EBackend::Simple;
+}
+
 bool TBlockRangeFieldSimple::TryAdd(TBlockRange16 range, bool* changed)
 {
     if (Range && !AreConnected(*Range, range)) {

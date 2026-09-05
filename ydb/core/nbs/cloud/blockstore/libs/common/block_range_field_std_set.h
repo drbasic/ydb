@@ -22,6 +22,8 @@ public:
         ui16 maxBlockCount = Max<ui16>(),
         TBlockRangePool* pool = nullptr);
 
+    [[nodiscard]] EBackend GetBackend() const override;
+
     bool TryAdd(TBlockRange16 range, bool* changed) override;
     bool TryRemove(TBlockRange16 range, bool* changed) override;
     void Clear() override;

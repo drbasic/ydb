@@ -12,6 +12,8 @@ namespace NYdb::NBS::NBlockStore {
 class TBlockRangeFieldSimple final: public TNodeBasedBlockRangeFieldBase
 {
 public:
+    [[nodiscard]] EBackend GetBackend() const override;
+
     bool TryAdd(TBlockRange16 range, bool* changed) override;
     bool TryRemove(TBlockRange16 range, bool* changed) override;
     void Clear() override;

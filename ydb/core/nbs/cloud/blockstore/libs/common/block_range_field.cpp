@@ -1,6 +1,8 @@
 #include "block_range_field.h"
 
 #include "block_range_allocator.h"
+#include "block_range_field_flat_set.h"
+#include "block_range_field_set.h"
 #include "block_range_field_std_set.h"
 
 #include <utility>
@@ -22,33 +24,62 @@ void AddRanges(const IBlockRangeFieldImpl& source, IBlockRangeFieldImpl* target)
         });
 }
 
-std::unique_ptr<IBlockRangeFieldImpl> MakeStdSetImpl(
+std::unique_ptr<TBlockRangePool> MakePool()
+{
+    return std::make_unique<TBlockRangePool>(DefaultBlockRangePoolChunkSize);
+}
+
+std::unique_ptr<IBlockRangeFieldImpl> MakeImpl(
+    IBlockRangeFieldImpl::EBackend backend,
     ui16 maxBlockCount,
     const IBlockRangeFieldImpl& source,
     std::unique_ptr<TBlockRangePool>& pool)
 {
-    if (!pool) {
-        pool =
-            std::make_unique<TBlockRangePool>(DefaultBlockRangePoolChunkSize);
+    switch (backend) {
+        case IBlockRangeFieldImpl::EBackend::StdSet: {
+            if (!pool) {
+                pool = MakePool();
+            }
+            auto result = std::make_unique<TBlockRangeFieldStdSet>(
+                maxBlockCount,
+                pool.get());
+            AddRanges(source, result.get());
+            return result;
+        }
+        case IBlockRangeFieldImpl::EBackend::Set: {
+            auto result = std::make_unique<TBlockRangeFieldSet>();
+            AddRanges(source, result.get());
+            return result;
+        }
+        case IBlockRangeFieldImpl::EBackend::FlatSet: {
+            auto result = std::make_unique<TBlockRangeFieldFlatSet>();
+            AddRanges(source, result.get());
+            return result;
+        }
+        case IBlockRangeFieldImpl::EBackend::Simple:
+        case IBlockRangeFieldImpl::EBackend::Bitmask:
+            // Simple cannot hold multiple ranges and Bitmask is not
+            // implemented yet.
+            Y_ABORT("Unsupported block range field backend");
     }
-    auto result =
-        std::make_unique<TBlockRangeFieldStdSet>(maxBlockCount, pool.get());
-    AddRanges(source, result.get());
-    return result;
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockRangeField::TBlockRangeField(ui16 maxBlockCount)
+TBlockRangeField::TBlockRangeField(
+    ui16 maxBlockCount,
+    EBackend preferredBackend)
     : MaxBlockCount(maxBlockCount)
+    , PreferredBackend(preferredBackend)
 {}
 
 TBlockRangeField::~TBlockRangeField() = default;
 
 TBlockRangeField::TBlockRangeField(TBlockRangeField&& other) noexcept
     : MaxBlockCount(other.MaxBlockCount)
+    , PreferredBackend(other.PreferredBackend)
     , Simple(std::move(other.Simple))
     , Pool(std::move(other.Pool))
     , Impl(std::move(other.Impl))
@@ -57,6 +88,7 @@ TBlockRangeField::TBlockRangeField(TBlockRangeField&& other) noexcept
 TBlockRangeField& TBlockRangeField::operator=(TBlockRangeField&& other) noexcept
 {
     MaxBlockCount = other.MaxBlockCount;
+    PreferredBackend = other.PreferredBackend;
     Simple = std::move(other.Simple);
     Pool = std::move(other.Pool);
     Impl = std::move(other.Impl);
@@ -77,7 +109,7 @@ bool TBlockRangeField::Add(TBlockRange16 range)
         return changed;
     }
 
-    Impl = MakeStdSetImpl(MaxBlockCount, Simple, Pool);
+    Impl = MakeImpl(PreferredBackend, MaxBlockCount, Simple, Pool);
     Y_ABORT_UNLESS(Impl->TryAdd(range, &changed));
     Simple.Clear();
     return changed;
@@ -112,7 +144,7 @@ bool TBlockRangeField::Remove(TBlockRange16 range)
         return changed;
     }
 
-    Impl = MakeStdSetImpl(MaxBlockCount, Simple, Pool);
+    Impl = MakeImpl(PreferredBackend, MaxBlockCount, Simple, Pool);
     Y_ABORT_UNLESS(Impl->TryRemove(range, &changed));
     Simple.Clear();
     return changed;
@@ -202,6 +234,11 @@ size_t TBlockRangeField::GetSegmentCount() const
 TString TBlockRangeField::Print() const
 {
     return Impl ? Impl->Print() : Simple.Print();
+}
+
+IBlockRangeFieldImpl::EBackend TBlockRangeField::GetBackend() const
+{
+    return Impl ? Impl->GetBackend() : IBlockRangeFieldImpl::EBackend::Simple;
 }
 
 void TBlockRangeField::CollapseImpl()

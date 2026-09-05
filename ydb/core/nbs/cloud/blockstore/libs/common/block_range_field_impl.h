@@ -20,6 +20,15 @@ public:
         NodeBased,
     };
 
+    enum class EBackend
+    {
+        Simple,
+        StdSet,
+        Set,
+        FlatSet,
+        Bitmask,
+    };
+
     enum class EEnumerateContinuation
     {
         Continue,
@@ -31,6 +40,8 @@ public:
         std::function<EEnumerateContinuation(TBlockRange16 item)>;
 
     virtual ~IBlockRangeFieldImpl() = default;
+
+    [[nodiscard]] virtual EBackend GetBackend() const = 0;
 
     [[nodiscard]] virtual ERealization GetRealization() const = 0;
 

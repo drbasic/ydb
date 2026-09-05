@@ -36,6 +36,8 @@ public:
     TBlockRangeFieldSet();
     ~TBlockRangeFieldSet() override;
 
+    [[nodiscard]] EBackend GetBackend() const override;
+
     bool TryAdd(TRange range, bool* changed) override;
     bool TryRemove(TRange range, bool* changed) override;
 

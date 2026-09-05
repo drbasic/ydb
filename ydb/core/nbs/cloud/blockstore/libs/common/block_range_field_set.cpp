@@ -51,6 +51,11 @@ TBlockRangeFieldSet::~TBlockRangeFieldSet()
     ::operator delete(Arena);
 }
 
+IBlockRangeFieldImpl::EBackend TBlockRangeFieldSet::GetBackend() const
+{
+    return EBackend::Set;
+}
+
 bool TBlockRangeFieldSet::TryAdd(TRange range, bool* changed)
 {
     *changed = false;
