@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     arena_allocator.cpp
+    arena_allocator_index_pool.cpp
     arena_allocator_pool.cpp
     block_range_algorithms.cpp
     block_range_field.cpp
