@@ -56,7 +56,8 @@ std::unique_ptr<IBlockRangeFieldImpl> MakeImpl(
             return result;
         }
         case IBlockRangeFieldImpl::EBackend::FlatSet: {
-            auto result = std::make_unique<TBlockRangeFieldFlatSet>();
+            auto result =
+                std::make_unique<TBlockRangeFieldFlatSet>(allocator, 4096);
             AddRanges(source, result.get());
             return result;
         }

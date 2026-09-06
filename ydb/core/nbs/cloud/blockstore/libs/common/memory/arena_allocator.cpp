@@ -20,9 +20,9 @@ namespace {
 //////////////////////////////////////////////////////////////////////////////
 
 constexpr size_t BlockSize = 1_MB;
-constexpr size_t MinSlotSize = 512;
+constexpr size_t MinSlotSize = 256;
 constexpr size_t MaxSlotSize = 4096;
-constexpr size_t SlotSizeCount = 4;   // 512, 1024, 2048, 4096
+constexpr size_t SlotSizeCount = 5;   // 256, 512, 1024, 2048, 4096
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -267,6 +267,7 @@ private:
     TMutex Mutex;
     TMap<TBase, TBlock*> Bases;
     std::array<TBlockList, SlotSizeCount> BlocksBySlotSize{
+        TBlockList(256),
         TBlockList(512),
         TBlockList(1024),
         TBlockList(2048),
