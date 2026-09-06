@@ -118,7 +118,7 @@ private:
 
     // Pointers to chunks, sorted by the Start of the first range.
     TVector<TChunk*> Chunks;
-    IArenaAllocator* const Allocator;
+    std::shared_ptr<IArenaAllocator> Allocator;
     const size_t MaxChunks;
     ui32 RangeCount = 0;
     ui32 BlockCount = 0;

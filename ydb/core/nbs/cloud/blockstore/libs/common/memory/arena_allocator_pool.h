@@ -39,8 +39,8 @@ private:
     // memory and returns it to the allocator in its destructor.
     struct TSlot
     {
-        IArenaAllocator* Allocator;
         void* Base = nullptr;
+        IArenaAllocatorPtr Allocator;
         const size_t ChunksPerSlot = 0;
         const size_t ChunkSize = 0;
         size_t AllocatedChunks = 0;   // chunks carved so far
@@ -48,7 +48,7 @@ private:
         size_t FreeCount = 0;
 
         TSlot(
-            IArenaAllocator* allocator,
+            IArenaAllocatorPtr allocator,
             size_t slotSize,
             size_t chunksPerSlot,
             size_t chunkSize);
@@ -65,7 +65,7 @@ private:
     void AcquireSlot();
     void ReleaseSlot(TSlot* slot) noexcept;
 
-    const IArenaAllocatorPtr Allocator;
+    IArenaAllocatorPtr Allocator;
     const size_t SlotSize;
     const size_t ChunkSize;
     const size_t ChunksPerSlot;

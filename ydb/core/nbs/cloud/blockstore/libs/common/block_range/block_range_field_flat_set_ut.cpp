@@ -20,9 +20,9 @@ TBlockRangeFieldFlatSet::TRange R(ui16 start, ui16 end)
     return TBlockRangeFieldFlatSet::TRange::MakeClosedInterval(start, end);
 }
 
-std::unique_ptr<IArenaAllocator> MakeAllocator()
+std::shared_ptr<IArenaAllocator> MakeAllocator()
 {
-    return std::unique_ptr<IArenaAllocator>(CreateArenaAllocator());
+    return CreateArenaAllocator();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -38,7 +38,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddSingleRange)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
@@ -48,7 +48,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddTwoNonAdjacentRanges)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
@@ -58,7 +58,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddAdjacentRangesMerged)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
@@ -68,7 +68,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddOverlappingRangesMerged)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 10), &changed));
@@ -78,7 +78,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddCoveredByExistingIsNoop)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 100), &changed));
@@ -90,7 +90,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddCoversMultipleRanges)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
@@ -103,7 +103,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddMergesOnBothSides)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
@@ -115,7 +115,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddSameRangeTwice)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(3, 7), &changed));
@@ -127,7 +127,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddField)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 4), &changed));
@@ -154,7 +154,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveFromEmpty)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(!f.TryRemove(R(0, 10), &changed));
@@ -164,7 +164,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveExact)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 10), &changed);
@@ -174,7 +174,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveFromMiddle)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 20), &changed);
@@ -184,7 +184,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveLeftPart)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 20), &changed);
@@ -194,7 +194,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveRightPart)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 20), &changed);
@@ -204,7 +204,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveNonOverlapping)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -215,7 +215,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveSeveralRanges)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 5), &changed);
@@ -230,14 +230,14 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsOnEmpty)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         UNIT_ASSERT(!f.Overlaps(R(0, 100)));
     }
 
     Y_UNIT_TEST(OverlapsExact)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -246,7 +246,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsPartialLeft)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -255,7 +255,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsPartialRight)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -264,7 +264,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsCovering)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -273,7 +273,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsNoOverlapBefore)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -282,7 +282,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsNoOverlapAfter)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -291,7 +291,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(OverlapsAdjacentNotOverlapping)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -304,7 +304,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddReturnsFalseWhenFullyCovered)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 100), &changed);
@@ -318,7 +318,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveReturnsFalseWhenEmpty)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         UNIT_ASSERT(!f.TryRemove(R(0, 100), &changed));
@@ -327,7 +327,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveReturnsFalseWhenNoOverlap)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -343,7 +343,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddStartingAtZero)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 0), &changed);
@@ -353,7 +353,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveSingleBlock)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 4), &changed);
@@ -363,7 +363,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(ManyFragmentsAfterRemoves)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 99), &changed);
@@ -379,7 +379,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddRestoresAfterRemoves)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 99), &changed);
@@ -394,7 +394,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(EnumerateOrderedByStart)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(50, 60), &changed);
@@ -405,7 +405,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(EnumerateStopsAtCondition)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 5), &changed);
@@ -433,7 +433,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersOnEmpty)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetSegmentCount());
@@ -441,7 +441,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersAfterSingleAdd)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -451,7 +451,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersAfterTwoDisjointAdds)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 4), &changed);
@@ -462,7 +462,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersAfterMerge)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 4), &changed);
@@ -473,7 +473,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersAfterRemove)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 19), &changed);
@@ -484,7 +484,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersAfterClear)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 9), &changed);
@@ -496,7 +496,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersSingleBlock)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(42, 42), &changed);
@@ -506,7 +506,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CountersManyFragments)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 99), &changed);
@@ -522,7 +522,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(CapacityExhaustion)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         // Add 64 disjoint ranges (max capacity = 64 segments)
@@ -536,7 +536,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(ReuseAfterClear)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         // Fill capacity
@@ -561,7 +561,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddExtendsPredecessor)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -574,7 +574,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddExtendsSuccessor)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(10, 20), &changed);
@@ -587,7 +587,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(AddNonAdjacentInMiddle)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 5), &changed);
@@ -601,7 +601,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(RemoveSplitsRange)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 100), &changed);
@@ -614,7 +614,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(MultipleSequentialRemoves)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         f.TryAdd(R(0, 99), &changed);
@@ -630,7 +630,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(PrintEmpty)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         UNIT_ASSERT(f.Print().empty());
     }
@@ -640,7 +640,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
 
     Y_UNIT_TEST(ClearResetsState)
     {
-        std::unique_ptr<IArenaAllocator> allocator = MakeAllocator();
+        auto allocator = MakeAllocator();
         TBlockRangeFieldFlatSet f{allocator.get()};
         bool changed = false;
         for (ui16 i = 0; i < 64; ++i) {

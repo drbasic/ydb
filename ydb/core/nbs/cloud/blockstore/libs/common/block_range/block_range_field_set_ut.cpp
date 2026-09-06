@@ -13,9 +13,9 @@ namespace {
 
 constexpr size_t MaxPoolSize = 4096;
 
-std::unique_ptr<IArenaAllocator> MakeAllocator()
+std::shared_ptr<IArenaAllocator> MakeAllocator()
 {
-    return std::unique_ptr<IArenaAllocator>(CreateArenaAllocator());
+    return CreateArenaAllocator();
 }
 
 TBlockRangeFieldSet::TRange R(ui16 start, ui16 end)
@@ -35,7 +35,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddSingleRange)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -45,7 +45,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddTwoNonAdjacentRanges)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
         UNIT_ASSERT(changed);
@@ -57,7 +57,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddAdjacentRangesMerged)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
         UNIT_ASSERT(changed);
@@ -69,7 +69,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddOverlappingRangesMerged)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 10), &changed));
         UNIT_ASSERT(changed);
@@ -81,7 +81,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddCoveredByExistingIsNoop)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 100), &changed));
         UNIT_ASSERT(changed);
@@ -94,7 +94,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddCoversMultipleRanges)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
         UNIT_ASSERT(changed);
@@ -111,7 +111,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddMergesOnBothSides)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
         UNIT_ASSERT(changed);
@@ -126,7 +126,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddSameRangeTwice)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(3, 7), &changed));
         UNIT_ASSERT(changed);
@@ -139,7 +139,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddField)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 4), &changed));
         UNIT_ASSERT(changed);
@@ -160,7 +160,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         // spans multiple existing ranges corrupts the BST, causing
         // FindNextGreaterNode to loop forever.
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
 
         // Add 3 disjoint ranges
@@ -183,7 +183,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveFromEmpty)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryRemove(R(0, 10), &changed));
         UNIT_ASSERT(!changed);
@@ -193,7 +193,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveExact)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 10), &changed));
         UNIT_ASSERT(changed);
@@ -205,7 +205,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveFromMiddle)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 20), &changed));
         UNIT_ASSERT(changed);
@@ -217,7 +217,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveLeftPart)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 20), &changed));
         UNIT_ASSERT(changed);
@@ -229,7 +229,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveRightPart)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 20), &changed));
         UNIT_ASSERT(changed);
@@ -241,7 +241,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveNonOverlapping)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -253,7 +253,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveSeveralRanges)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
         UNIT_ASSERT(changed);
@@ -272,14 +272,14 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsOnEmpty)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         UNIT_ASSERT(!f.Overlaps(R(0, 100)));
     }
 
     Y_UNIT_TEST(OverlapsExact)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -289,7 +289,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsPartialLeft)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -299,7 +299,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsPartialRight)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -309,7 +309,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsCovering)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -319,7 +319,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsNoOverlapBefore)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -329,7 +329,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsNoOverlapAfter)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -339,7 +339,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(OverlapsAdjacentNotOverlapping)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -353,7 +353,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddReturnsFalseWhenFullyCovered)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 100), &changed));
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
@@ -367,7 +367,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveReturnsFalseWhenEmpty)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryRemove(R(0, 100), &changed));
         UNIT_ASSERT(!changed);
@@ -376,7 +376,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveReturnsFalseWhenNoOverlap)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(f.TryRemove(R(0, 9), &changed));
@@ -391,7 +391,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddStartingAtZero)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 0), &changed));
         UNIT_ASSERT(changed);
@@ -402,7 +402,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(RemoveSingleBlock)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 4), &changed));
         UNIT_ASSERT(changed);
@@ -413,7 +413,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(ManyFragmentsAfterRemoves)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 20), &changed));
         UNIT_ASSERT(changed);
@@ -427,7 +427,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(AddRestoresAfterRemoves)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 200), &changed));
         UNIT_ASSERT(changed);
@@ -446,7 +446,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(EnumerateOrderedByStart)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(50, 60), &changed));
         UNIT_ASSERT(changed);
@@ -460,7 +460,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(EnumerateStopsAtCondition)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 5), &changed));
         UNIT_ASSERT(changed);
@@ -491,7 +491,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersOnEmpty)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
         UNIT_ASSERT_VALUES_EQUAL(0u, f.GetSegmentCount());
     }
@@ -499,7 +499,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersAfterSingleAdd)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(10, 20), &changed));
         UNIT_ASSERT(changed);
@@ -510,7 +510,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersAfterTwoDisjointAdds)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 4), &changed));
         UNIT_ASSERT(changed);
@@ -523,7 +523,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersAfterMerge)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 4), &changed));
         UNIT_ASSERT(changed);
@@ -536,7 +536,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersAfterRemove)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 19), &changed));
         UNIT_ASSERT(changed);
@@ -549,7 +549,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersAfterClear)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 9), &changed));
         UNIT_ASSERT(changed);
@@ -563,7 +563,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersSingleBlock)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(42, 42), &changed));
         UNIT_ASSERT(changed);
@@ -574,7 +574,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(CountersManyFragments)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(0, 99), &changed));
         UNIT_ASSERT(changed);
@@ -592,7 +592,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(ArenaExhaustion)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         // Add 64 disjoint ranges (max for 512-byte arena = 64 nodes)
         for (ui16 i = 0; i < 64; ++i) {
@@ -606,7 +606,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     {
         // Fill arena with 64 disjoint ranges of 3 blocks each.
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), 64 * 8};
+        TBlockRangeFieldSet f{allocator, 64 * 8};
         bool changed = false;
         for (ui16 i = 0; i < 64; ++i) {
             UNIT_ASSERT(f.TryAdd(R(i * 10, i * 10 + 2), &changed));
@@ -629,7 +629,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     {
         // Fill arena with 64 disjoint ranges of 3 blocks each.
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), 64 * 8};
+        TBlockRangeFieldSet f{allocator, 64 * 8};
         bool changed = false;
         for (ui16 i = 0; i < 64; ++i) {
             UNIT_ASSERT(f.TryAdd(R(i * 10, i * 10 + 2), &changed));
@@ -652,7 +652,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(ReuseAfterClear)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         // Fill arena
         for (ui16 i = 0; i < 64; ++i) {
@@ -676,7 +676,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     Y_UNIT_TEST(MemoryPerRange)
     {
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(100, 200), &changed));
         UNIT_ASSERT(changed);
@@ -692,7 +692,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         // on line 83: End + 1 >= range.Start becomes 0 >= 65534 = false.
         // This is a known overflow issue.
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
 
         // Add a range ending at ui16 max.
@@ -715,7 +715,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
     {
         // Test remove when a range ends at ui16 max.
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
 
         UNIT_ASSERT(f.TryAdd(R(65533, 65535), &changed));
@@ -735,7 +735,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         // Add 512 single-block ranges with a 1-block gap between them:
         // [0,0], [2,2], [4,4], ..., [1022,1022].
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         constexpr size_t Count = 512;
         bool changed = false;
         for (size_t i = 0; i < Count; ++i) {
@@ -755,7 +755,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         //   [30..38]  [70..78] <- left / right child
         //             [60..68] <- right child's left subtree (the successor)
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         UNIT_ASSERT(f.TryAdd(R(50, 58), &changed));
         UNIT_ASSERT(changed);
@@ -795,7 +795,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         // minimum so that every removal detaches a successor deep in the
         // right subtree.
         auto allocator = MakeAllocator();
-        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        TBlockRangeFieldSet f{allocator, MaxPoolSize};
         bool changed = false;
         for (ui16 i = 0; i < 10; ++i) {
             UNIT_ASSERT(f.TryAdd(R(i * 10, i * 10 + 5), &changed));

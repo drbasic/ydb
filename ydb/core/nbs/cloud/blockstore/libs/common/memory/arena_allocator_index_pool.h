@@ -73,8 +73,8 @@ private:
     // destructor.
     struct TSlot
     {
-        IArenaAllocator* Allocator;
         void* Base = nullptr;
+        IArenaAllocatorPtr Allocator;
         const size_t BaseIndex = 0;
         const size_t ChunksPerSlot = 0;
         const size_t ChunkSize = 0;
@@ -83,7 +83,7 @@ private:
         size_t FreeCount = 0;
 
         TSlot(
-            IArenaAllocator* allocator,
+            IArenaAllocatorPtr allocator,
             size_t slotIndex,
             size_t slotSize,
             size_t chunksPerSlot,

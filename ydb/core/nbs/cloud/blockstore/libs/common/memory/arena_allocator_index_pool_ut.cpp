@@ -54,10 +54,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
         constexpr size_t MaxSizeBytes = 2 * SlotSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
+        auto allocator = std::make_shared<TTrackingAllocator>();
         TArenaAllocatorIndexPool pool(
-            rawAllocator,
+            allocator,
             SlotSize,
             MaxSizeBytes,
             ChunkSize);
@@ -74,14 +73,14 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         UNIT_ASSERT_VALUES_EQUAL(ChunksPerSlot, unique.size());
 
         // Only a single slot should have been acquired.
-        UNIT_ASSERT_VALUES_EQUAL(1, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(1, allocator->AllocatedBlocks());
 
         for (ui64 index: indices) {
             pool.Deallocate(index);
         }
 
         // The slot is released when all chunks are freed.
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(ChunkSizeIsRespected)
@@ -136,10 +135,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
         constexpr size_t MaxSizeBytes = 2 * SlotSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
+        auto allocator = std::make_shared<TTrackingAllocator>();
         TArenaAllocatorIndexPool pool(
-            rawAllocator,
+            allocator,
             SlotSize,
             MaxSizeBytes,
             ChunkSize);
@@ -160,7 +158,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         }
 
         // The slot is released.
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(MemoryReleasedOnDestruction)
@@ -170,12 +168,11 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
         constexpr size_t MaxSizeBytes = 2 * SlotSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
+        auto allocator = std::make_shared<TTrackingAllocator>();
 
         {
             TArenaAllocatorIndexPool pool(
-                rawAllocator,
+                allocator,
                 SlotSize,
                 MaxSizeBytes,
                 ChunkSize);
@@ -189,12 +186,12 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
             }
 
             // The slot has been released because all chunks were freed.
-            UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+            UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
         }
 
         // Memory must have been returned to the allocator when slots were
         // reclaimed.
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(MultipleSlots)
@@ -204,10 +201,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
         constexpr size_t MaxSizeBytes = 4 * SlotSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
+        auto allocator = std::make_shared<TTrackingAllocator>();
         TArenaAllocatorIndexPool pool(
-            rawAllocator,
+            allocator,
             SlotSize,
             MaxSizeBytes,
             ChunkSize);
@@ -216,18 +212,18 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         for (size_t i = 0; i < 2 * ChunksPerSlot; ++i) {
             indices.push_back(pool.Allocate());
         }
-        UNIT_ASSERT_VALUES_EQUAL(2, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(2, allocator->AllocatedBlocks());
 
         // Free chunks from the second slot - it gets released.
         for (size_t i = ChunksPerSlot; i < indices.size(); ++i) {
             pool.Deallocate(indices[i]);
         }
-        UNIT_ASSERT_VALUES_EQUAL(1, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(1, allocator->AllocatedBlocks());
 
         for (size_t i = 0; i < ChunksPerSlot; ++i) {
             pool.Deallocate(indices[i]);
         }
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(GetAddressForInvalidIndexReturnsNullptr)
@@ -344,10 +340,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t MaxSizeBytes = 2 * SlotSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
+        auto allocator = std::make_shared<TTrackingAllocator>();
         TArenaAllocatorIndexPool pool(
-            rawAllocator,
+            allocator,
             SlotSize,
             MaxSizeBytes,
             ChunkSize);
@@ -398,7 +393,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         }
 
         // Memory must have been released when the last slots were freed.
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(MoveAssignmentPreservesIndicesAndData)
@@ -407,11 +402,10 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t MaxSizeBytes = 2 * SlotSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
+        auto allocator = std::make_shared<TTrackingAllocator>();
 
         TArenaAllocatorIndexPool source(
-            rawAllocator,
+            allocator,
             SlotSize,
             MaxSizeBytes,
             ChunkSize);
@@ -425,7 +419,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorIndexPoolTest)
         void* addrBefore = source.GetAddress<void>(index);
 
         TArenaAllocatorIndexPool target(
-            rawAllocator,
+            allocator,
             SlotSize,
             MaxSizeBytes,
             ChunkSize);

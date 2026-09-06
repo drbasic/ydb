@@ -117,12 +117,8 @@ bool TBlockRangeField::Add(TBlockRange16 range)
         return changed;
     }
 
-    Impl = MakeImpl(
-        PreferredBackend,
-        MaxBlockCount,
-        Simple,
-        Pool,
-        ArenaAllocator.get());
+    Impl =
+        MakeImpl(PreferredBackend, MaxBlockCount, Simple, Pool, ArenaAllocator);
     Y_ABORT_UNLESS(Impl->TryAdd(range, &changed));
     Simple.Clear();
     return changed;
@@ -157,12 +153,8 @@ bool TBlockRangeField::Remove(TBlockRange16 range)
         return changed;
     }
 
-    Impl = MakeImpl(
-        PreferredBackend,
-        MaxBlockCount,
-        Simple,
-        Pool,
-        ArenaAllocator.get());
+    Impl =
+        MakeImpl(PreferredBackend, MaxBlockCount, Simple, Pool, ArenaAllocator);
     Y_ABORT_UNLESS(Impl->TryRemove(range, &changed));
     Simple.Clear();
     return changed;

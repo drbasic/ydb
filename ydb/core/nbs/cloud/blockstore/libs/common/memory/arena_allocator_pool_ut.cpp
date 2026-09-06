@@ -53,9 +53,8 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
-        TArenaAllocatorPool pool(rawAllocator, SlotSize, ChunkSize);
+        auto allocator = std::make_shared<TTrackingAllocator>();
+        TArenaAllocatorPool pool(allocator, SlotSize, ChunkSize);
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < ChunksPerSlot; ++i) {
@@ -69,14 +68,14 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         UNIT_ASSERT_VALUES_EQUAL(ChunksPerSlot, unique.size());
 
         // Only a single slot should have been acquired.
-        UNIT_ASSERT_VALUES_EQUAL(1, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(1, allocator->AllocatedBlocks());
 
         for (void* ptr: ptrs) {
             pool.Deallocate(ptr);
         }
 
         // The whole slot should be returned to the allocator.
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(ChunkSizeIsRespected)
@@ -120,9 +119,8 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
-        TArenaAllocatorPool pool(rawAllocator, SlotSize, ChunkSize);
+        auto allocator = std::make_shared<TTrackingAllocator>();
+        TArenaAllocatorPool pool(allocator, SlotSize, ChunkSize);
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < ChunksPerSlot; ++i) {
@@ -133,7 +131,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         for (void* ptr: ptrs) {
             pool.Deallocate(ptr);
         }
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
 
         // The next allocation should re-acquire a slot and hand out
         // the same address again.
@@ -148,27 +146,26 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
-        auto allocator = std::make_unique<TTrackingAllocator>();
-        auto* rawAllocator = allocator.get();
-        TArenaAllocatorPool pool(rawAllocator, SlotSize, ChunkSize);
+        auto allocator = std::make_shared<TTrackingAllocator>();
+        TArenaAllocatorPool pool(allocator, SlotSize, ChunkSize);
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < 2 * ChunksPerSlot; ++i) {
             ptrs.push_back(pool.Allocate(ChunkSize));
         }
-        UNIT_ASSERT_VALUES_EQUAL(2, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(2, allocator->AllocatedBlocks());
 
         // Free chunks from the second slot only - its slot should be
         // returned to the allocator while the first one stays alive.
         for (size_t i = ChunksPerSlot; i < ptrs.size(); ++i) {
             pool.Deallocate(ptrs[i]);
         }
-        UNIT_ASSERT_VALUES_EQUAL(1, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(1, allocator->AllocatedBlocks());
 
         for (size_t i = 0; i < ChunksPerSlot; ++i) {
             pool.Deallocate(ptrs[i]);
         }
-        UNIT_ASSERT_VALUES_EQUAL(0, rawAllocator->AllocatedBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
     }
 
     Y_UNIT_TEST(FreedMemoryIsZeroedOnReuse)

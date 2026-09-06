@@ -23,7 +23,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
 {
     Y_UNIT_TEST(AllocateAllSizes)
     {
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         for (size_t size:
              {size_t(512), size_t(1024), size_t(2048), size_t(4096)})
@@ -38,7 +38,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
 
     Y_UNIT_TEST(AllocationIsAligned)
     {
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         for (size_t size:
              {size_t(512), size_t(1024), size_t(2048), size_t(4096)})
@@ -52,7 +52,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
 
     Y_UNIT_TEST(ReuseFreedSlot)
     {
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         void* ptr = allocator->Allocate(1024);
         UNIT_ASSERT(ptr);
@@ -66,7 +66,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
 
     Y_UNIT_TEST(BlocksAreReused)
     {
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < 100; ++i) {
@@ -95,7 +95,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
 
     Y_UNIT_TEST(Multithreaded)
     {
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         constexpr int ThreadCount = 8;
         constexpr int Iterations = 10000;
@@ -136,7 +136,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
     {
         constexpr size_t Size = 1024;
 
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         // Allocate, write non-zero pattern, free.
         void* ptr1 = allocator->Allocate(Size);
@@ -160,7 +160,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
     {
         constexpr size_t SlotSizes[] = {512, 1024, 2048, 4096};
 
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         for (size_t slotSize: SlotSizes) {
             // First allocation: write pattern, free.
@@ -189,7 +189,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
         constexpr size_t Size = 2048;
         constexpr int Cycles = 5;
 
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         for (int cycle = 0; cycle < Cycles; ++cycle) {
             void* ptr = allocator->Allocate(Size);
@@ -218,7 +218,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorTest)
         constexpr size_t Size = 512;
         constexpr size_t BlockSlots = 256;   // BlockSize(1MB) / 512
 
-        std::unique_ptr<IArenaAllocator> allocator(CreateArenaAllocator());
+        auto allocator = CreateArenaAllocator();
 
         TVector<void*> ptrs;
         ptrs.reserve(BlockSlots);

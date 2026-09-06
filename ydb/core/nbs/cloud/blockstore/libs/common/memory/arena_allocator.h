@@ -1,5 +1,7 @@
 #pragma once
 
+#include "public.h"
+
 #include <cstddef>
 
 namespace NYdb::NBS::NBlockStore {
@@ -18,11 +20,9 @@ public:
     [[nodiscard]] virtual size_t AllocatedSize() const = 0;
 };
 
-using IArenaAllocatorPtr = IArenaAllocator*;
-
 //////////////////////////////////////////////////////////////////////////////
 
-IArenaAllocator* CreateArenaAllocator();
+IArenaAllocatorPtr CreateArenaAllocator();
 
 //////////////////////////////////////////////////////////////////////////////
 }   // namespace NYdb::NBS::NBlockStore

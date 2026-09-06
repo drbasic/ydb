@@ -10,12 +10,12 @@ namespace NYdb::NBS::NBlockStore {
 //////////////////////////////////////////////////////////////////////////////
 
 TArenaAllocatorPool::TSlot::TSlot(
-    IArenaAllocator* allocator,
+    IArenaAllocatorPtr allocator,
     size_t slotSize,
     size_t chunksPerSlot,
     size_t chunkSize)
-    : Allocator(allocator)
-    , Base(allocator->Allocate(slotSize))
+    : Base(allocator->Allocate(slotSize))
+    , Allocator(std::move(allocator))
     , ChunksPerSlot(chunksPerSlot)
     , ChunkSize(chunkSize)
 {
@@ -68,7 +68,7 @@ TArenaAllocatorPool::TArenaAllocatorPool(
     IArenaAllocatorPtr allocator,
     size_t slotSize,
     size_t chunkSize)
-    : Allocator(allocator)
+    : Allocator(std::move(allocator))
     , SlotSize(slotSize)
     , ChunkSize(chunkSize)
     , ChunksPerSlot(SlotSize / ChunkSize)

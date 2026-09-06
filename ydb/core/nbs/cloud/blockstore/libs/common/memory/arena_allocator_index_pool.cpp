@@ -9,13 +9,13 @@ namespace NYdb::NBS::NBlockStore {
 //////////////////////////////////////////////////////////////////////////////
 
 TArenaAllocatorIndexPool::TSlot::TSlot(
-    IArenaAllocator* allocator,
+    IArenaAllocatorPtr allocator,
     size_t slotIndex,
     size_t slotSize,
     size_t chunksPerSlot,
     size_t chunkSize)
-    : Allocator(allocator)
-    , Base(allocator->Allocate(slotSize))
+    : Base(allocator->Allocate(slotSize))
+    , Allocator(std::move(allocator))
     , BaseIndex(slotIndex * chunksPerSlot)
     , ChunksPerSlot(chunksPerSlot)
     , ChunkSize(chunkSize)

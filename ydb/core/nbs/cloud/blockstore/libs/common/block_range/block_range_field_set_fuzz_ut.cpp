@@ -25,9 +25,8 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetFuzz)
     // order (ascending by Start) and contents must match exactly.
     Y_UNIT_TEST(EnumerateSortedAfterRandomOps)
     {
-        auto allocator =
-            std::unique_ptr<IArenaAllocator>(CreateArenaAllocator());
-        TBlockRangeFieldSet f{allocator.get(), 256 * 1024};
+        auto allocator = CreateArenaAllocator();
+        TBlockRangeFieldSet f{allocator, 256 * 1024};
 
         TVector<TBlockRangeFieldSet::TRange> model;
         for (ui32 iter = 0; iter < 5000; ++iter) {
