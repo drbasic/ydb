@@ -50,7 +50,8 @@ std::unique_ptr<IBlockRangeFieldImpl> MakeImpl(
             return result;
         }
         case IBlockRangeFieldImpl::EBackend::Set: {
-            auto result = std::make_unique<TBlockRangeFieldSet>(allocator);
+            auto result =
+                std::make_unique<TBlockRangeFieldSet>(allocator, 4096);
             AddRanges(source, result.get());
             return result;
         }

@@ -19,7 +19,7 @@ namespace NYdb::NBS::NBlockStore {
 class TArenaAllocatorIndexPool
 {
 public:
-    static constexpr ui16 InvalidIndex = 0xFFFF;
+    static constexpr ui64 InvalidIndex = 0xFFFFFFFF;
 
     explicit TArenaAllocatorIndexPool(
         IArenaAllocatorPtr allocator,
@@ -35,11 +35,12 @@ public:
     TArenaAllocatorIndexPool& operator=(TArenaAllocatorIndexPool&&) = default;
 
     // Returns InvalidIndex if the pool is exhausted.
-    [[nodiscard]] ui16 Allocate();
-    void Deallocate(ui16 index) noexcept;
+    [[nodiscard]] ui64 Allocate();
+    void Deallocate(ui64 index) noexcept;
+    void DeallocateAll() noexcept;
 
     template <typename T>
-    [[nodiscard]] T* GetAddress(ui16 index) const noexcept
+    [[nodiscard]] T* GetAddress(ui64 index) const noexcept
     {
         if (index == InvalidIndex) {
             return nullptr;
@@ -48,13 +49,15 @@ public:
     }
 
     template <typename T>
-    [[nodiscard]] T* GetAddress(ui16 index) noexcept
+    [[nodiscard]] T* GetAddress(ui64 index) noexcept
     {
         if (index == InvalidIndex) {
             return nullptr;
         }
         return static_cast<T*>(GetChunkAddress(index));
     }
+
+    [[nodiscard]] size_t GetAllocatedCount() const;
 
 private:
     // Intrusive free list node stored in the first bytes of a free chunk
@@ -72,6 +75,7 @@ private:
     {
         IArenaAllocator* Allocator;
         void* Base = nullptr;
+        const size_t BaseIndex = 0;
         const size_t ChunksPerSlot = 0;
         const size_t ChunkSize = 0;
         size_t AllocatedChunks = 0;   // chunks carved so far
@@ -80,18 +84,22 @@ private:
 
         TSlot(
             IArenaAllocator* allocator,
+            size_t slotIndex,
             size_t slotSize,
             size_t chunksPerSlot,
             size_t chunkSize);
         ~TSlot();
 
-        void* Allocate();
-        void Free(void* chunk) noexcept;
+        ui64 Allocate();
+        void Free(ui64 index) noexcept;
         [[nodiscard]] bool Full() const noexcept;
         [[nodiscard]] bool Empty() const noexcept;
+        [[nodiscard]] size_t AllocatedCount() const noexcept;
+        [[nodiscard]] TFreeChunk* GetAddress(ui64 index) const noexcept;
+        [[nodiscard]] ui64 GetIndex(const TFreeChunk* chunk) const noexcept;
     };
 
-    void* GetChunkAddress(ui16 index) const noexcept;
+    [[nodiscard]] void* GetChunkAddress(ui64 index) const noexcept;
 
     void AcquireSlot();
     void ReleaseSlot(size_t slotIndex) noexcept;
@@ -106,8 +114,6 @@ private:
     TVector<std::unique_ptr<TSlot>> Slots;
     // Slot currently being carved into chunks.
     TSlot* CurrentSlot = nullptr;
-    // Index of CurrentSlot within Slots.
-    size_t CurrentSlotIndex = 0;
 };
 
 /////////////////////////////////////////////////////////////////////////////

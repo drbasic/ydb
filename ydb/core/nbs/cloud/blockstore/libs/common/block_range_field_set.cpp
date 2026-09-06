@@ -14,12 +14,63 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui16 NodeNullIndex = TArenaAllocatorIndexPool::InvalidIndex;
+constexpr ui16 NodeNullIndex = 0xffff;
 constexpr size_t NodeSize = 8;
 constexpr size_t SlotSize = 512;
-constexpr size_t MaxPoolSize = 4096;
 
 ////////////////////////////////////////////////////////////////////////////////
+
+bool HasChanged(TBlockRangeFieldSet::EWalk walk)
+{
+    switch (walk) {
+        case TBlockRangeFieldSet::EWalk::ContinueChanged:
+        case TBlockRangeFieldSet::EWalk::StopChanged:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool HasOutOfMemory(TBlockRangeFieldSet::EWalk walk)
+{
+    switch (walk) {
+        case TBlockRangeFieldSet::EWalk::StopOutOfMemory:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool HasStop(TBlockRangeFieldSet::EWalk walk)
+{
+    switch (walk) {
+        case TBlockRangeFieldSet::EWalk::StopChanged:
+        case TBlockRangeFieldSet::EWalk::StopUnchanged:
+        case TBlockRangeFieldSet::EWalk::StopOutOfMemory:
+            return true;
+        default:
+            return false;
+    }
+}
+
+TBlockRangeFieldSet::EWalk MixChanged(
+    TBlockRangeFieldSet::EWalk walk,
+    bool changed)
+{
+    if (!changed) {
+        return walk;
+    }
+    switch (walk) {
+        case TBlockRangeFieldSet::EWalk::ContinueChanged:
+        case TBlockRangeFieldSet::EWalk::StopChanged:
+        case TBlockRangeFieldSet::EWalk::StopOutOfMemory:
+            return walk;
+        case TBlockRangeFieldSet::EWalk::StopUnchanged:
+            return TBlockRangeFieldSet::EWalk::StopChanged;
+        case TBlockRangeFieldSet::EWalk::ContinueUnchanged:
+            return TBlockRangeFieldSet::EWalk::ContinueChanged;
+    }
+}
 
 }   // namespace
 
@@ -32,6 +83,8 @@ struct TBlockRangeFieldSet::TNode
 
     void Init()
     {
+        Range.Start = 0;
+        Range.End = 0;
         Left = NodeNullIndex;
         Right = NodeNullIndex;
     }
@@ -41,10 +94,11 @@ static_assert(NodeSize == sizeof(TBlockRangeFieldSet::TNode));
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TBlockRangeFieldSet::TBlockRangeFieldSet(IArenaAllocatorPtr allocator)
+TBlockRangeFieldSet::TBlockRangeFieldSet(
+    IArenaAllocatorPtr allocator,
+    size_t maxSizeBytes)
     : Root(NodeNullIndex)
-    , FreeHead(NodeNullIndex)
-    , Pool(allocator, SlotSize, MaxPoolSize, NodeSize)
+    , Pool(allocator, SlotSize, maxSizeBytes, NodeSize)
 {}
 
 IBlockRangeFieldImpl::EBackend TBlockRangeFieldSet::GetBackend() const
@@ -55,93 +109,32 @@ IBlockRangeFieldImpl::EBackend TBlockRangeFieldSet::GetBackend() const
 bool TBlockRangeFieldSet::TryAdd(TRange range, bool* changed)
 {
     *changed = false;
-
     if (Root == NodeNullIndex) {
         // Empty tree: plain insertion.
         const ui16 idx = AllocNode();
         if (idx == NodeNullIndex) {
-            Y_ABORT_UNLESS(false);
             return false;
         }
         GetNode(idx)->Range = range;
-        InsertNode(idx);
+        Root = idx;
+        BlockCount += range.Size();
         *changed = true;
         return true;
     }
 
-    // Find the first node overlapping or adjacent to the range:
-    // either the predecessor touching us from the left,
-    // or the lower bound node touching us from the right.
-    const ui16 pred = FindPredecessorNode(range.Start);
-    const ui16 lower = FindLowerBoundNode(range.Start);
-
-    ui16 first = NodeNullIndex;
-    if (pred != NodeNullIndex &&
-        static_cast<ui32>(GetNode(pred)->Range.End) + 1 >= range.Start)
-    {
-        first = pred;
-    } else if (
-        lower != NodeNullIndex &&
-        static_cast<ui32>(GetNode(lower)->Range.Start) <= range.End + 1)
-    {
-        first = lower;
-    }
-
-    if (first == NodeNullIndex) {
-        // No overlap and no adjacency: plain insertion.
-        const ui16 idx = AllocNode();
-        if (idx == NodeNullIndex) {
-            return false;
-        }
-        GetNode(idx)->Range = range;
-        InsertNode(idx);
-        *changed = true;
+    TNode* acceptor = nullptr;
+    auto walk = WalkAdd(Root, range, acceptor);
+    *changed = HasChanged(walk);
+    if (walk == EWalk::StopUnchanged) {
         return true;
     }
-
-    const TRange firstRange = GetNode(first)->Range;
-
-    // Fast path: fully covered by an existing range — nothing changes.
-    if (firstRange.Start <= range.Start && range.End <= firstRange.End) {
+    if (acceptor) {
+        const size_t oldSize = acceptor->Range.Size();
+        acceptor->Range = range;
+        BlockCount += range.Size() - oldSize;
         return true;
     }
-
-    // Compute the merged range in local variables.
-    // Do NOT modify any node's Start in-place: it would break the BST.
-    // Instead, we remove all affected nodes first, then insert one merged node.
-    ui16 mergedStart = Min(range.Start, firstRange.Start);
-    ui16 mergedEnd = Max(range.End, firstRange.End);
-
-    // Remove first node from the tree.
-    RemoveNodeByKey(firstRange.Start);
-
-    // Walk right from mergedStart, remove nodes that are covered or adjacent,
-    // expanding mergedEnd as we go. Stop at the first gap.
-    ui16 current = FindNextGreaterNode(mergedStart);
-    while (current != NodeNullIndex) {
-        const TNode* node = GetNode(current);
-        if (node->Range.Start > static_cast<ui32>(mergedEnd) + 1) {
-            // Gap found — the rest of the tree is guaranteed non-adjacent.
-            break;
-        }
-        // This node is covered or adjacent: widen and remove.
-        mergedEnd = Max(mergedEnd, node->Range.End);
-        const ui16 nextStart = node->Range.Start;
-        RemoveNodeByKey(nextStart);
-        current = FindNextGreaterNode(mergedStart);
-    }
-
-    // Re-insert with the merged range.
-    *changed = true;
-    const ui16 allocIdx = AllocNode();
-    if (allocIdx == NodeNullIndex) {
-        return false;
-    }
-    GetNode(allocIdx)->Range.Start = mergedStart;
-    GetNode(allocIdx)->Range.End = mergedEnd;
-    InsertNode(allocIdx);
-
-    return true;
+    return TryInsertNode(range);
 }
 
 bool TBlockRangeFieldSet::TryRemove(TRange range, bool* changed)
@@ -152,9 +145,8 @@ bool TBlockRangeFieldSet::TryRemove(TRange range, bool* changed)
     }
 
     // Remove algorithm:
-    // 1. Fast path: O(h) walk — if nothing overlaps, return false.
-    // 2. Find the first node overlapping range.
-    // 3. Walk the continuous run of overlapping nodes left to right:
+    // 1. Find the first node overlapping range.
+    // 2. Walk the continuous run of overlapping nodes left to right:
     //    - range fully inside node → trim left (End = range.Start - 1),
     //      insert a new node on the right (range.End+1 .. node.End);
     //    - left overlap (node.Start < range.Start <= node.End)
@@ -163,104 +155,16 @@ bool TBlockRangeFieldSet::TryRemove(TRange range, bool* changed)
     //      → trim left (node.Start = range.End + 1), exit;
     //    - node fully covered → remove by Start key, continue.
 
-    // Fast path: check that something actually overlaps the range.
-    {
-        ui16 current = Root;
-        bool found = false;
-        while (current != NodeNullIndex) {
-            const TNode* node = GetNode(current);
-            if (node->Range.End < range.Start) {
-                current = node->Right;
-            } else if (node->Range.Start > range.End) {
-                current = node->Left;
-            } else {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            return true;
-        }
-    }
-
-    // Find the first node overlapping the range (adjacency does not count).
-    const ui16 pred = FindPredecessorNode(range.Start);
-    const ui16 lower = FindLowerBoundNode(range.Start);
-
-    ui16 current = NodeNullIndex;
-    if (pred != NodeNullIndex && GetNode(pred)->Range.End >= range.Start) {
-        current = pred;
-    } else if (
-        lower != NodeNullIndex && GetNode(lower)->Range.Start <= range.End)
-    {
-        current = lower;
-    } else {
-        Y_ABORT_UNLESS(false);
-        return true;   // Unreachable after the fast path check.
-    }
-
-    // Process the run of overlapping nodes from left to right.
-    while (current != NodeNullIndex &&
-           GetNode(current)->Range.Start <= range.End)
-    {
-        const ui16 nodeStart = GetNode(current)->Range.Start;
-        const ui16 nodeEnd = GetNode(current)->Range.End;
-
-        if (nodeStart < range.Start && nodeEnd > range.End) {
-            // The range cuts a hole inside this node: trim the left part
-            // and insert the right part as a new node.
-            const ui16 idx = AllocNode();
-            if (idx == NodeNullIndex) {
-                return false;
-            }
-            *changed = true;
-            // Update block count: remove the trimmed portion from the left
-            // node.
-            const size_t oldNodeSize = GetNode(current)->Range.Size();
-            GetNode(current)->Range.End = range.Start > 0 ? range.Start - 1 : 0;
-            BlockCount -= (oldNodeSize - GetNode(current)->Range.Size());
-            GetNode(idx)->Range =
-                TRange::MakeClosedInterval(range.End + 1, nodeEnd);
-            InsertNode(idx);
-            break;
-        }
-        if (nodeStart < range.Start) {
-            // Overlap on the left: trim the right edge in place.
-            // The key (Start) does not change, the order is preserved.
-            const size_t oldNodeSize = GetNode(current)->Range.Size();
-            GetNode(current)->Range.End = range.Start > 0 ? range.Start - 1 : 0;
-            BlockCount -= (oldNodeSize - GetNode(current)->Range.Size());
-            *changed = true;
-            current = FindNextGreaterNode(nodeStart);
-            continue;
-        }
-        if (nodeEnd > range.End) {
-            // Overlap on the right: trim the left edge in place.
-            // The new Start is still greater than the previous node's End
-            // and less than the next node's Start, so the order holds.
-            const size_t oldNodeSize = GetNode(current)->Range.Size();
-            GetNode(current)->Range.Start =
-                range.End < Max<ui16>() ? range.End + 1 : Max<ui16>();
-            BlockCount -= (oldNodeSize - GetNode(current)->Range.Size());
-            *changed = true;
-            break;
-        }
-        // Fully covered: remove and continue with the next node.
-        current = FindNextGreaterNode(nodeStart);
-        RemoveNodeByKey(nodeStart);
-        *changed = true;
-    }
-
-    return true;
+    auto walk = WalkRemove(Root, range);
+    *changed = HasChanged(walk);
+    return !HasOutOfMemory(walk);
 }
 
 void TBlockRangeFieldSet::Clear()
 {
     Root = NodeNullIndex;
-    FreeHead = NodeNullIndex;
-    UsedCount = 0;
-    SegmentCount = 0;
     BlockCount = 0;
+    Pool.DeallocateAll();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -320,48 +224,36 @@ bool TBlockRangeFieldSet::Empty() const
 
 size_t TBlockRangeFieldSet::GetBlockCount() const
 {
-    return IntegerCast<ui16>(BlockCount);
+    return BlockCount;
 }
 
 size_t TBlockRangeFieldSet::GetSegmentCount() const
 {
-    return SegmentCount;
+    return Pool.GetAllocatedCount();
 }
 
 ui16 TBlockRangeFieldSet::AllocNode()
 {
-    if (FreeHead != NodeNullIndex) {
-        ui16 idx = FreeHead;
-        FreeHead = GetNode(idx)->Left;
-        GetNode(idx)->Init();
-        ++SegmentCount;
-        return idx;
-    }
-
-    const ui16 idx = Pool.Allocate();
-    if (idx == NodeNullIndex) {
+    const ui64 result = Pool.Allocate();
+    if (result == TArenaAllocatorIndexPool::InvalidIndex) {
         return NodeNullIndex;
     }
-    ++UsedCount;
-    GetNode(idx)->Init();
-    ++SegmentCount;
-    return idx;
+    auto* node = GetNode(result);
+    node->Left = NodeNullIndex;
+    node->Right = NodeNullIndex;
+    return result;
 }
 
 void TBlockRangeFieldSet::FreeNode(ui16 idx)
 {
-    if (idx == NodeNullIndex) {
-        return;
-    }
-    GetNode(idx)->Left = FreeHead;
-    FreeHead = idx;
-    --SegmentCount;
-    BlockCount -= GetNode(idx)->Range.Size();
     Pool.Deallocate(idx);
 }
 
 TBlockRangeFieldSet::TNode* TBlockRangeFieldSet::GetNode(ui16 idx)
 {
+    if (idx == NodeNullIndex) {
+        return nullptr;
+    }
     return Pool.GetAddress<TNode>(idx);
 }
 
@@ -370,77 +262,185 @@ const TBlockRangeFieldSet::TNode* TBlockRangeFieldSet::GetNode(ui16 idx) const
     return Pool.GetAddress<const TNode>(idx);
 }
 
-ui16 TBlockRangeFieldSet::FindLowerBoundNode(ui16 key) const
+TBlockRangeFieldSet::EWalk TBlockRangeFieldSet::WalkAdd(
+    ui16& parentId,
+    TRange& newRange,
+    TNodePtr& acceptor)
 {
-    ui16 current = Root;
-    ui16 best = NodeNullIndex;
-    while (current != NodeNullIndex) {
-        const TNode* node = GetNode(current);
-        if (node->Range.Start >= key) {
-            best = current;
-            current = node->Left;
+    TNode* parent = GetNode(parentId);
+    if (!parent) {
+        return EWalk::ContinueUnchanged;
+    }
+
+    const auto& p = parent->Range;
+
+    if (p.Contains(newRange)) {
+        return EWalk::StopUnchanged;
+    }
+
+    bool needLeftWalk = newRange.Start < p.Start;
+    bool needRightWalk = newRange.End > p.End;
+    if (p.Overlaps(newRange) ||
+        static_cast<ui32>(p.End) + 1 == newRange.Start ||
+        static_cast<ui32>(newRange.End) + 1 == p.Start)
+    {
+        if (newRange.Start > p.Start) {
+            newRange.Start = p.Start;
+            needLeftWalk = false;
+        }
+        if (newRange.End < p.End) {
+            newRange.End = p.End;
+            needRightWalk = false;
+        }
+
+        if (!acceptor) {
+            acceptor = parent;
         } else {
-            current = node->Right;
+            BlockCount -= parent->Range.Size();
+            RemoveNode(parentId);
+            return WalkAdd(parentId, newRange, acceptor);
         }
     }
-    return best;
+
+    if (needLeftWalk && parent->Left != NodeNullIndex) {
+        auto walk = WalkAdd(parent->Left, newRange, acceptor);
+        if (HasStop(walk)) {
+            return walk;
+        }
+    }
+    if (needRightWalk && parent->Right != NodeNullIndex) {
+        auto walk = WalkAdd(parent->Right, newRange, acceptor);
+        if (HasStop(walk)) {
+            return walk;
+        }
+    }
+    return EWalk::ContinueChanged;
 }
 
-ui16 TBlockRangeFieldSet::FindPredecessorNode(ui16 key) const
+TBlockRangeFieldSet::EWalk TBlockRangeFieldSet::WalkRemove(
+    ui16& parentId,
+    TRange range)
 {
-    ui16 current = Root;
-    ui16 best = NodeNullIndex;
-    while (current != NodeNullIndex) {
-        const TNode* node = GetNode(current);
-        if (node->Range.Start < key) {
-            best = current;
-            current = node->Right;
-        } else {
-            current = node->Left;
+    TNode* parent = GetNode(parentId);
+    if (!parent) {
+        return EWalk::ContinueUnchanged;
+    }
+
+    auto& p = parent->Range;
+
+    if (range.Contains(p)) {
+        BlockCount -= p.Size();
+        RemoveNode(parentId);
+        return MixChanged(WalkRemove(parentId, range), true);
+    }
+
+    bool needLeftWalk = range.Start < p.Start;
+    bool needRightWalk = range.End > p.End;
+    bool changed = false;
+    if (range.Overlaps(p)) {
+        changed = true;
+        if (p.Start < range.Start && p.End > range.End) {
+            // Cut inside — split the node
+            return SplitNode(parentId, range);
+        }
+        const size_t oldSize = p.Size();
+        if (p.Start < range.Start) {
+            // Trim right
+            p.End = range.Start - 1;
+            needLeftWalk = false;
+        } else if (p.End > range.End) {
+            // Trim left
+            p.Start = range.End + 1;
+            needRightWalk = false;
+        }
+        BlockCount -= oldSize - p.Size();
+    }
+    if (needLeftWalk && parent->Left != NodeNullIndex) {
+        auto walk = WalkRemove(parent->Left, range);
+        if (HasStop(walk)) {
+            return MixChanged(walk, changed);
         }
     }
-    return best;
+    if (needRightWalk && parent->Right != NodeNullIndex) {
+        auto walk = WalkRemove(parent->Right, range);
+        if (HasStop(walk)) {
+            return MixChanged(walk, changed);
+        }
+    }
+    return changed ? EWalk::ContinueChanged : EWalk::ContinueUnchanged;
 }
 
-ui16 TBlockRangeFieldSet::FindNextGreaterNode(ui16 key) const
+void TBlockRangeFieldSet::RemoveNode(ui16& nodeId)
 {
-    ui16 current = Root;
-    ui16 best = NodeNullIndex;
-    while (current != NodeNullIndex) {
-        const TNode* node = GetNode(current);
-        if (node->Range.Start > key) {
-            best = current;
-            current = node->Left;
-        } else {
-            current = node->Right;
-        }
+    TNode* node = GetNode(nodeId);
+    if (node->Left == NodeNullIndex && node->Right == NodeNullIndex) {
+        FreeNode(nodeId);
+        nodeId = NodeNullIndex;
+        return;
     }
-    return best;
+
+    if (node->Left == NodeNullIndex) {
+        ui16 r = node->Right;
+        FreeNode(nodeId);
+        nodeId = r;
+        return;
+    }
+
+    if (node->Right == NodeNullIndex) {
+        ui16 l = node->Left;
+        FreeNode(nodeId);
+        nodeId = l;
+        return;
+    }
+
+    // Two children: copy successor's data into this node,
+    // then remove the successor from the right subtree.
+    const ui16 successor = FindMin(node->Right);
+    node->Range = GetNode(successor)->Range;
+    RemoveNode(node->Right);
 }
 
-ui16 TBlockRangeFieldSet::FindNodeByKey(
-    ui16 key,
-    ui16& parent,
-    bool& isLeftChild) const
+// Перед вызовом гарантируется что новый диапазон не будет пересекаться
+// или прилегать ни к одному диапазону в дереве.
+// Возвращает true, если узел вставлен; false при нехватке памяти.
+bool TBlockRangeFieldSet::TryInsertNode(TRange range)
 {
-    ui16 current = Root;
-    parent = NodeNullIndex;
-    isLeftChild = false;
-    while (current != NodeNullIndex) {
-        const TNode* node = GetNode(current);
-        if (node->Range.Start == key) {
-            return current;
-        }
-        parent = current;
-        if (key < node->Range.Start) {
-            isLeftChild = true;
-            current = node->Left;
-        } else {
-            isLeftChild = false;
-            current = node->Right;
-        }
+    const ui16 idx = AllocNode();
+    if (idx == NodeNullIndex) {
+        return false;
     }
-    return NodeNullIndex;
+    GetNode(idx)->Range = range;
+    InsertNode(idx);
+    return true;
+}
+
+ui16 TBlockRangeFieldSet::FindMin(ui16 nodeId) const
+{
+    const TNode* node = GetNode(nodeId);
+    while (node && node->Left != NodeNullIndex) {
+        node = GetNode(node->Left);
+        nodeId = node->Left;
+    }
+    return nodeId;
+}
+
+TBlockRangeFieldSet::EWalk TBlockRangeFieldSet::SplitNode(
+    ui16 parentId,
+    TRange range)
+{
+    ui16 newNodeId = AllocNode();
+    if (newNodeId == NodeNullIndex) {
+        return EWalk::StopOutOfMemory;
+    }
+    TNode* parentNode = GetNode(parentId);
+    TNode* newNode = GetNode(newNodeId);
+    newNode->Range = parentNode->Range;
+    parentNode->Range.End = range.Start - 1;
+    newNode->Range.Start = range.End + 1;
+    BlockCount -= range.Size();
+    newNode->Right = parentNode->Right;
+    parentNode->Right = newNodeId;
+    return EWalk::StopChanged;
 }
 
 void TBlockRangeFieldSet::InsertNode(ui16 idx)
@@ -469,59 +469,6 @@ void TBlockRangeFieldSet::InsertNode(ui16 idx)
             }
         }
     }
-}
-
-void TBlockRangeFieldSet::RemoveNodeByKey(ui16 key)
-{
-    ui16 parent = NodeNullIndex;
-    bool isLeftChild = false;
-    const ui16 idx = FindNodeByKey(key, parent, isLeftChild);
-    if (idx == NodeNullIndex) {
-        return;
-    }
-    TNode* node = GetNode(idx);
-
-    // Attach a replacement child to the parent (or make it the root).
-    const auto attach = [&](ui16 replacement)
-    {
-        if (parent == NodeNullIndex) {
-            Root = replacement;
-        } else if (isLeftChild) {
-            GetNode(parent)->Left = replacement;
-        } else {
-            GetNode(parent)->Right = replacement;
-        }
-    };
-
-    if (node->Left == NodeNullIndex) {
-        // Leaf or right child only.
-        attach(node->Right);
-        FreeNode(idx);
-        return;
-    }
-    if (node->Right == NodeNullIndex) {
-        // Left child only.
-        attach(node->Left);
-        FreeNode(idx);
-        return;
-    }
-
-    // Two children: replace the range with the in-order successor's one,
-    // then unlink the successor (it has no left child by definition).
-    ui16 successor = node->Right;
-    ui16 successorParent = idx;
-    while (GetNode(successor)->Left != NodeNullIndex) {
-        successorParent = successor;
-        successor = GetNode(successor)->Left;
-    }
-    TNode* succNode = GetNode(successor);
-    node->Range = succNode->Range;
-    if (successorParent == idx) {
-        node->Right = succNode->Right;
-    } else {
-        GetNode(successorParent)->Left = succNode->Right;
-    }
-    FreeNode(successor);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

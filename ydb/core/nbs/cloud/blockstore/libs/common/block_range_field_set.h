@@ -36,8 +36,17 @@ class TBlockRangeFieldSet
 {
 public:
     struct TNode;
+    using TNodePtr = TNode*;
+    enum class EWalk
+    {
+        ContinueChanged,
+        ContinueUnchanged,
+        StopChanged,
+        StopUnchanged,
+        StopOutOfMemory,
+    };
 
-    explicit TBlockRangeFieldSet(IArenaAllocatorPtr allocator);
+    TBlockRangeFieldSet(IArenaAllocatorPtr allocator, size_t maxSizeBytes);
 
     [[nodiscard]] EBackend GetBackend() const override;
 
@@ -56,9 +65,6 @@ public:
 
 private:
     ui16 Root;
-    ui16 FreeHead;
-    ui16 UsedCount = 0;
-    ui16 SegmentCount = 0;
     ui32 BlockCount = 0;
     TArenaAllocatorIndexPool Pool;
 
@@ -67,15 +73,15 @@ private:
     [[nodiscard]] TNode* GetNode(ui16 idx);
     [[nodiscard]] const TNode* GetNode(ui16 idx) const;
 
-    // First node with Start >= key (lower bound), or NodeNullIndex.
-    [[nodiscard]] ui16 FindLowerBoundNode(ui16 key) const;
-    // First node with Start < key (predecessor), or NodeNullIndex.
-    [[nodiscard]] ui16 FindPredecessorNode(ui16 key) const;
-    // First node with Start > key (successor), or NodeNullIndex.
-    [[nodiscard]] ui16 FindNextGreaterNode(ui16 key) const;
-    // Locate node by its unique Start key; outputs parent link info.
-    [[nodiscard]] ui16
-    FindNodeByKey(ui16 key, ui16& parent, bool& isLeftChild) const;
+    EWalk WalkAdd(ui16& parentId, TRange& newRange, TNodePtr& acceptor);
+    EWalk WalkRemove(ui16& parentId, TRange range);
+
+    void RemoveNode(ui16& nodeId);
+    // Returns true when node has inserted. False when out of memory.
+    bool TryInsertNode(TRange range);
+    [[nodiscard]] ui16 FindMin(ui16 nodeId) const;
+    [[nodiscard]] EWalk SplitNode(ui16 parentId, TRange range);
+
     void InsertNode(ui16 idx);
     void RemoveNodeByKey(ui16 key);
 };

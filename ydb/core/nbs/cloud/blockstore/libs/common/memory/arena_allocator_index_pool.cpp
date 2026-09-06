@@ -10,11 +10,13 @@ namespace NYdb::NBS::NBlockStore {
 
 TArenaAllocatorIndexPool::TSlot::TSlot(
     IArenaAllocator* allocator,
+    size_t slotIndex,
     size_t slotSize,
     size_t chunksPerSlot,
     size_t chunkSize)
     : Allocator(allocator)
     , Base(allocator->Allocate(slotSize))
+    , BaseIndex(slotIndex * chunksPerSlot)
     , ChunksPerSlot(chunksPerSlot)
     , ChunkSize(chunkSize)
 {
@@ -28,24 +30,28 @@ TArenaAllocatorIndexPool::TSlot::~TSlot()
     }
 }
 
-void* TArenaAllocatorIndexPool::TSlot::Allocate()
+ui64 TArenaAllocatorIndexPool::TSlot::Allocate()
 {
     if (FreeList) {
         TFreeChunk* result = FreeList;
         FreeList = FreeList->Next;
         std::memset(result, 0, ChunkSize);
         --FreeCount;
-        return result;
+        return GetIndex(result);
     }
     if (AllocatedChunks == ChunksPerSlot) {
-        return nullptr;
+        return InvalidIndex;
     }
-    return static_cast<char*>(Base) + (AllocatedChunks++ * ChunkSize);
+
+    ui64 index = AllocatedChunks++;
+    void* ptr = static_cast<char*>(Base) + (index * ChunkSize);
+    std::memset(ptr, 0, ChunkSize);
+    return index + BaseIndex;
 }
 
-void TArenaAllocatorIndexPool::TSlot::Free(void* chunk) noexcept
+void TArenaAllocatorIndexPool::TSlot::Free(ui64 index) noexcept
 {
-    auto* ptr = static_cast<TFreeChunk*>(chunk);
+    TFreeChunk* ptr = GetAddress(index);
     ptr->Next = FreeList;
     FreeList = ptr;
     ++FreeCount;
@@ -59,6 +65,26 @@ bool TArenaAllocatorIndexPool::TSlot::Full() const noexcept
 bool TArenaAllocatorIndexPool::TSlot::Empty() const noexcept
 {
     return FreeCount == AllocatedChunks;
+}
+
+size_t TArenaAllocatorIndexPool::TSlot::AllocatedCount() const noexcept
+{
+    return AllocatedChunks - FreeCount;
+}
+
+TArenaAllocatorIndexPool::TFreeChunk*
+TArenaAllocatorIndexPool::TSlot::GetAddress(ui64 index) const noexcept
+{
+    return reinterpret_cast<TFreeChunk*>(
+        static_cast<char*>(Base) + ((index - BaseIndex) * ChunkSize));
+}
+
+ui64 TArenaAllocatorIndexPool::TSlot::GetIndex(
+    const TFreeChunk* chunk) const noexcept
+{
+    return BaseIndex +
+           (reinterpret_cast<const char*>(chunk) - static_cast<char*>(Base)) /
+               ChunkSize;
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -85,81 +111,100 @@ TArenaAllocatorIndexPool::TArenaAllocatorIndexPool(
 
 TArenaAllocatorIndexPool::~TArenaAllocatorIndexPool() = default;
 
-ui16 TArenaAllocatorIndexPool::Allocate()
+ui64 TArenaAllocatorIndexPool::Allocate()
 {
     if (!CurrentSlot) {
         AcquireSlot();
     }
 
-    if (void* ptr = CurrentSlot->Allocate()) {
-        const size_t chunkIndex =
-            static_cast<char*>(ptr) - static_cast<char*>(CurrentSlot->Base);
-        Y_ABORT_UNLESS(chunkIndex % ChunkSize == 0);
-        return static_cast<ui16>(
-            (CurrentSlotIndex * ChunksPerSlot) + (chunkIndex / ChunkSize));
-    }
-
-    if ((Slots.size() + 1) * ChunksPerSlot > MaxChunks) {
-        // The pool is exhausted.
-        return InvalidIndex;
+    if (ui64 result = CurrentSlot->Allocate(); result != InvalidIndex) {
+        return result;
     }
 
     AcquireSlot();
-    void* ptr = CurrentSlot->Allocate();
-    Y_ABORT_UNLESS(ptr);
-    const size_t chunkIndex =
-        static_cast<char*>(ptr) - static_cast<char*>(CurrentSlot->Base);
-    Y_ABORT_UNLESS(chunkIndex % ChunkSize == 0);
-    return static_cast<ui16>(
-        (CurrentSlotIndex * ChunksPerSlot) + (chunkIndex / ChunkSize));
+    if (!CurrentSlot) {
+        // The pool is exhausted.
+        return InvalidIndex;
+    }
+    return CurrentSlot->Allocate();
 }
 
-void TArenaAllocatorIndexPool::Deallocate(ui16 index) noexcept
+void TArenaAllocatorIndexPool::Deallocate(ui64 index) noexcept
 {
     if (index == InvalidIndex) {
         return;
     }
 
     const size_t slotIndex = index / ChunksPerSlot;
-    const size_t chunkIndex = index % ChunksPerSlot;
-
-    Y_ABORT_UNLESS(slotIndex < Slots.size(), "Deallocate: unknown index");
-
-    auto* slot = Slots[slotIndex].get();
-    slot->Free(static_cast<char*>(slot->Base) + (chunkIndex * ChunkSize));
-
-    // Note: slots are not returned to the underlying allocator here, because
-    // that would invalidate ui16 indices that point into later slots.
-    // Memory is released when the pool is destroyed.
+    auto& slot = *Slots[slotIndex];
+    slot.Free(index);
+    if (slot.Empty()) {
+        Slots[slotIndex].reset();
+        CurrentSlot = nullptr;
+    }
 }
 
-void* TArenaAllocatorIndexPool::GetChunkAddress(ui16 index) const noexcept
+void TArenaAllocatorIndexPool::DeallocateAll() noexcept
+{
+    Slots.clear();
+    CurrentSlot = nullptr;
+}
+
+size_t TArenaAllocatorIndexPool::GetAllocatedCount() const
+{
+    size_t result = 0;
+    for (const auto& slot: Slots) {
+        if (slot) {
+            result += slot->AllocatedCount();
+        }
+    }
+    return result;
+}
+
+void* TArenaAllocatorIndexPool::GetChunkAddress(ui64 index) const noexcept
 {
     const size_t slotIndex = index / ChunksPerSlot;
-    const size_t chunkIndex = index % ChunksPerSlot;
-
-    Y_ABORT_UNLESS(slotIndex < Slots.size(), "GetAddress: unknown index");
-
-    auto* slot = Slots[slotIndex].get();
-    return static_cast<char*>(slot->Base) + (chunkIndex * ChunkSize);
+    return Slots[slotIndex]->GetAddress(index);
 }
 
 void TArenaAllocatorIndexPool::AcquireSlot()
 {
     // Try to find an existing slot with free chunks.
-    for (size_t i = 0; i < Slots.size(); ++i) {
-        if (!Slots[i]->Full()) {
-            CurrentSlot = Slots[i].get();
-            CurrentSlotIndex = i;
+    for (const auto& slot: Slots) {
+        if (slot && !slot->Full()) {
+            CurrentSlot = slot.get();
             return;
         }
     }
 
+    for (size_t i = 0; i < Slots.size(); ++i) {
+        if (Slots[i]) {
+            continue;
+        }
+
+        Slots[i] = std::make_unique<TSlot>(
+            Allocator,
+            i,
+            SlotSize,
+            ChunksPerSlot,
+            ChunkSize);
+        CurrentSlot = Slots[i].get();
+        return;
+    }
+
+    if (Slots.size() * ChunksPerSlot == MaxChunks) {
+        CurrentSlot = nullptr;
+        return;
+    }
+
     // Allocate a new slot.
-    Slots.push_back(
-        std::make_unique<TSlot>(Allocator, SlotSize, ChunksPerSlot, ChunkSize));
+    Slots.push_back(std::make_unique<TSlot>(
+        Allocator,
+        Slots.size(),
+        SlotSize,
+        ChunksPerSlot,
+        ChunkSize));
     CurrentSlot = Slots.back().get();
-    CurrentSlotIndex = Slots.size() - 1;
 }
 
 void TArenaAllocatorIndexPool::ReleaseSlot(size_t /*slotIndex*/) noexcept
