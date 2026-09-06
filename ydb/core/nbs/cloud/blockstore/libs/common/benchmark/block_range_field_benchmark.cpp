@@ -2,6 +2,7 @@
 
 #include <util/generic/vector.h>
 #include <util/random/fast.h>
+#include <util/string/cast.h>
 
 #include <benchmark/benchmark.h>
 
@@ -12,35 +13,24 @@
 using namespace NYdb::NBS::NBlockStore;
 
 namespace {
+constexpr size_t BlockCount = 32768;
+constexpr size_t BitMaskSizeBytes = BlockCount / 8;
+constexpr size_t RemoveRangeLength = 256;
+constexpr size_t AdjacentRangeBatchSize = 16;
+constexpr size_t SetNodeSize = 8;
 
-constexpr ui16 BlockCount = 32768;
-constexpr ui32 RemoveRangeLength = 256;
-constexpr size_t AdjacentRangeBatchSize = 10;
-
-// Backends the benchmarks are run against. Every benchmark below is
-// registered once per entry of this array.
-static constexpr std::array SupportedBackends = {
-    TBlockRangeField::EBackend::StdSet,
-    TBlockRangeField::EBackend::Set,
-    TBlockRangeField::EBackend::FlatSet,
+struct TBackendCase
+{
+    IBlockRangeFieldImpl::EBackend Backend;
+    size_t MaxSupportedRangeCount;
 };
 
-TString BackendName(TBlockRangeField::EBackend backend)
-{
-    switch (backend) {
-        case TBlockRangeField::EBackend::Simple:
-            return "Simple";
-        case TBlockRangeField::EBackend::StdSet:
-            return "StdSet";
-        case TBlockRangeField::EBackend::Set:
-            return "Set";
-        case TBlockRangeField::EBackend::FlatSet:
-            return "FlatSet";
-        case TBlockRangeField::EBackend::Bitmask:
-            return "Bitmask";
-    }
-    Y_ABORT("Unknown backend");
-}
+constexpr TBackendCase BackendCases[] = {
+    {.Backend = IBlockRangeFieldImpl::EBackend::StdSet,
+     .MaxSupportedRangeCount = BlockCount / 2},
+    {.Backend = IBlockRangeFieldImpl::EBackend::Set,
+     .MaxSupportedRangeCount = BitMaskSizeBytes / SetNodeSize},
+};
 
 // Describes what percentage of generated ranges has the specified length.
 struct TRangeSizeShare
@@ -248,47 +238,65 @@ static void BM_BlockRangeFieldRemove(
 
 namespace {
 
-// Registers every benchmark once per backend from SupportedBackends. Runs
+// Adds a logarithmic sequence of Arg() values: min, min*16, min*256, ...,
+// always finishing exactly at max.
+benchmark::Benchmark*
+AddArgRange(benchmark::Benchmark* benchmark, size_t max, size_t min = 1)
+{
+    Y_ABORT_UNLESS(min <= max);
+    for (size_t arg = min; arg < max; arg *= 16) {
+        benchmark->Arg(arg);
+    }
+    benchmark->Arg(max);
+    return benchmark;
+}
+
+// Rounds a value down to a multiple of AdjacentRangeBatchSize.
+constexpr size_t RoundDownToBatch(size_t value)
+{
+    return value / AdjacentRangeBatchSize * AdjacentRangeBatchSize;
+}
+
+// Registers every benchmark once per backend from BackendCases. Runs
 // during static initialization, before main(), just like the BENCHMARK()
 // macro does.
 const auto RegisteredBenchmarks = []()
 {
-    for (const auto backend: SupportedBackends) {
-        const TString suffix = "/" + BackendName(backend);
+    for (const auto& backendCase: BackendCases) {
+        const TString suffix = "/" + ToString(backendCase.Backend);
+        const size_t max = backendCase.MaxSupportedRangeCount;
 
-        benchmark::RegisterBenchmark(
-            ("BM_BlockRangeFieldAdd" + suffix).c_str(),
-            BM_BlockRangeFieldAdd,
-            backend)
-            ->Arg(1000)
-            ->Arg(2000)
-            ->Arg(5000)
+        AddArgRange(
+            benchmark::RegisterBenchmark(
+                ("BM_BlockRangeFieldAdd" + suffix).c_str(),
+                BM_BlockRangeFieldAdd,
+                backendCase.Backend),
+            max)
             ->Unit(benchmark::kMicrosecond);
 
-        benchmark::RegisterBenchmark(
-            ("BM_BlockRangeFieldAddRightAdjacent" + suffix).c_str(),
-            BM_BlockRangeFieldAddRightAdjacent,
-            backend)
-            ->Arg(1000)
-            ->Arg(2000)
-            ->Arg(5000)
+        AddArgRange(
+            benchmark::RegisterBenchmark(
+                ("BM_BlockRangeFieldAddRightAdjacent" + suffix).c_str(),
+                BM_BlockRangeFieldAddRightAdjacent,
+                backendCase.Backend),
+            RoundDownToBatch(max),
+            AdjacentRangeBatchSize)
             ->Unit(benchmark::kMicrosecond);
 
-        benchmark::RegisterBenchmark(
-            ("BM_BlockRangeFieldAddSequentialBlocks" + suffix).c_str(),
-            BM_BlockRangeFieldAddSequentialBlocks,
-            backend)
-            ->Arg(32768)
+        AddArgRange(
+            benchmark::RegisterBenchmark(
+                ("BM_BlockRangeFieldAddSequentialBlocks" + suffix).c_str(),
+                BM_BlockRangeFieldAddSequentialBlocks,
+                backendCase.Backend),
+            max)
             ->Unit(benchmark::kMicrosecond);
 
-        benchmark::RegisterBenchmark(
-            ("BM_BlockRangeFieldRemove" + suffix).c_str(),
-            BM_BlockRangeFieldRemove,
-            backend)
-            ->Arg(0)
-            ->Arg(1000)
-            ->Arg(2000)
-            ->Arg(5000)
+        AddArgRange(
+            benchmark::RegisterBenchmark(
+                ("BM_BlockRangeFieldRemove" + suffix).c_str(),
+                BM_BlockRangeFieldRemove,
+                backendCase.Backend),
+            max)
             ->Unit(benchmark::kMicrosecond);
     }
     return 0;

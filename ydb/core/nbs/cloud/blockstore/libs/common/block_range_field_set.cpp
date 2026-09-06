@@ -357,12 +357,14 @@ TBlockRangeFieldSet::EWalk TBlockRangeFieldSet::WalkRemove(
     }
     if (needLeftWalk && parent->Left != NodeNullIndex) {
         auto walk = WalkRemove(parent->Left, range);
+        changed = changed || HasChanged(walk);
         if (HasStop(walk)) {
             return MixChanged(walk, changed);
         }
     }
     if (needRightWalk && parent->Right != NodeNullIndex) {
         auto walk = WalkRemove(parent->Right, range);
+        changed = changed || HasChanged(walk);
         if (HasStop(walk)) {
             return MixChanged(walk, changed);
         }
@@ -393,11 +395,22 @@ void TBlockRangeFieldSet::RemoveNode(ui16& nodeId)
         return;
     }
 
-    // Two children: copy successor's data into this node,
-    // then remove the successor from the right subtree.
-    const ui16 successor = FindMin(node->Right);
+    // Two children: detach the successor (minimum of the right subtree),
+    // copy its data into this node and free the successor.
+    const ui16 successor = DetachMin(node->Right);
     node->Range = GetNode(successor)->Range;
-    RemoveNode(node->Right);
+    FreeNode(successor);
+}
+
+ui16 TBlockRangeFieldSet::DetachMin(ui16& nodeId)
+{
+    TNode* node = GetNode(nodeId);
+    if (node->Left != NodeNullIndex) {
+        return DetachMin(node->Left);
+    }
+    const ui16 min = nodeId;
+    nodeId = node->Right;
+    return min;
 }
 
 // Перед вызовом гарантируется что новый диапазон не будет пересекаться
@@ -412,16 +425,6 @@ bool TBlockRangeFieldSet::TryInsertNode(TRange range)
     GetNode(idx)->Range = range;
     InsertNode(idx);
     return true;
-}
-
-ui16 TBlockRangeFieldSet::FindMin(ui16 nodeId) const
-{
-    const TNode* node = GetNode(nodeId);
-    while (node && node->Left != NodeNullIndex) {
-        node = GetNode(node->Left);
-        nodeId = node->Left;
-    }
-    return nodeId;
 }
 
 TBlockRangeFieldSet::EWalk TBlockRangeFieldSet::SplitNode(

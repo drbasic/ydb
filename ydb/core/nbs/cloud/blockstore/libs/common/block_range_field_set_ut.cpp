@@ -748,6 +748,69 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldSetTest)
         UNIT_ASSERT_VALUES_EQUAL(Count, f.GetBlockCount());
     }
 
+    Y_UNIT_TEST(RemoveNodeWithTwoChildrenSuccessorNotRightChild)
+    {   //  Tree built by insertion order. Ranges are non-adjacent so that
+        // TryAdd does not merge them:
+        //   [50..58]           <- root, two children
+        //   [30..38]  [70..78] <- left / right child
+        //             [60..68] <- right child's left subtree (the successor)
+        auto allocator = MakeAllocator();
+        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        bool changed = false;
+        UNIT_ASSERT(f.TryAdd(R(50, 58), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT(f.TryAdd(R(30, 38), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL("[30..38][50..58]", f.Print());
+        UNIT_ASSERT(f.TryAdd(R(70, 78), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL("[30..38][50..58][70..78]", f.Print());
+        UNIT_ASSERT(f.TryAdd(R(60, 68), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL("[30..38][50..58][60..68][70..78]", f.Print());
+
+        // Remove the root: it has two children and its successor [60..68]
+        // is not the right child.
+        UNIT_ASSERT(f.TryRemove(R(50, 58), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL("[30..38][60..68][70..78]", f.Print());
+        UNIT_ASSERT_VALUES_EQUAL(27u, f.GetBlockCount());
+
+        // The tree must remain consistent: remove the rest without crashes.
+        UNIT_ASSERT(f.TryRemove(R(60, 68), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL("[30..38][70..78]", f.Print());
+        UNIT_ASSERT(f.TryRemove(R(30, 38), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT_VALUES_EQUAL("[70..78]", f.Print());
+        UNIT_ASSERT(f.TryRemove(R(70, 78), &changed));
+        UNIT_ASSERT(changed);
+        UNIT_ASSERT(f.Empty());
+        UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
+    }
+
+    Y_UNIT_TEST(RemoveRootWithTwoChildrenRepeatedly)
+    {
+        // Stress the two-children removal path: always remove the current
+        // minimum so that every removal detaches a successor deep in the
+        // right subtree.
+        auto allocator = MakeAllocator();
+        TBlockRangeFieldSet f{allocator.get(), MaxPoolSize};
+        bool changed = false;
+        for (ui16 i = 0; i < 10; ++i) {
+            UNIT_ASSERT(f.TryAdd(R(i * 10, i * 10 + 5), &changed));
+            UNIT_ASSERT(changed);
+        }
+
+        for (ui16 i = 0; i < 10; ++i) {
+            UNIT_ASSERT(f.TryRemove(R(i * 10, i * 10 + 5), &changed));
+            UNIT_ASSERT(changed);
+            UNIT_ASSERT_VALUES_EQUAL(9 - i, f.GetSegmentCount());
+        }
+        UNIT_ASSERT(f.Empty());
+        UNIT_ASSERT_VALUES_EQUAL(0u, f.GetBlockCount());
+    }
+
     // -------------------------------------------------------------------------
 }
 

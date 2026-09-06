@@ -79,7 +79,9 @@ private:
     void RemoveNode(ui16& nodeId);
     // Returns true when node has inserted. False when out of memory.
     bool TryInsertNode(TRange range);
-    [[nodiscard]] ui16 FindMin(ui16 nodeId) const;
+    // Detaches the minimum node from the subtree and returns its index.
+    // The subtree root reference is updated to keep the tree connected.
+    [[nodiscard]] ui16 DetachMin(ui16& nodeId);
     [[nodiscard]] EWalk SplitNode(ui16 parentId, TRange range);
 
     void InsertNode(ui16 idx);
