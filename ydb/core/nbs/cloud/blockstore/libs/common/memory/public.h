@@ -1,7 +1,5 @@
 #pragma once
 
-#include <ydb/core/nbs/cloud/storage/core/libs/common/public.h>
-
 #include <util/generic/ptr.h>
 #include <util/generic/size_literals.h>
 

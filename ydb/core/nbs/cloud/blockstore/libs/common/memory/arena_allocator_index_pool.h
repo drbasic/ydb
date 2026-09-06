@@ -13,7 +13,7 @@ namespace NYdb::NBS::NBlockStore {
 
 //////////////////////////////////////////////////////////////////////////////
 
-// A fixed-size-chunk pool that hands out ui16 indices instead of pointers.
+// A fixed-size-chunk pool that hands out ui64 indices instead of pointers.
 // The index encodes the slot and the chunk within the slot, so stable chunk
 // addresses are guaranteed by keeping slots in a vector of unique_ptrs.
 class TArenaAllocatorIndexPool

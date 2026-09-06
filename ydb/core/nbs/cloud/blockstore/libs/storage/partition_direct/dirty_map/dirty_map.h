@@ -5,7 +5,7 @@
 #include "inflight_info.h"
 #include "range_locker.h"
 
-#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range_map.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range/block_range_map.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/count_size.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/host_mask.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/protos/public.h>

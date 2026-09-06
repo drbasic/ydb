@@ -12,8 +12,6 @@
 #include <util/string/builder.h>
 
 #include <cstddef>
-#include <functional>
-#include <memory>
 
 namespace NYdb::NBS::NBlockStore {
 

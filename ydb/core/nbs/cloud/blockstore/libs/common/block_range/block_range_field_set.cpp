@@ -413,9 +413,9 @@ ui16 TBlockRangeFieldSet::DetachMin(ui16& nodeId)
     return min;
 }
 
-// Перед вызовом гарантируется что новый диапазон не будет пересекаться
-// или прилегать ни к одному диапазону в дереве.
-// Возвращает true, если узел вставлен; false при нехватке памяти.
+// It is guaranteed that the new range does not overlap or touch
+// any range in the tree before this call.
+// Returns true if the node was inserted; false on out-of-memory.
 bool TBlockRangeFieldSet::TryInsertNode(TRange range)
 {
     const ui16 idx = AllocNode();

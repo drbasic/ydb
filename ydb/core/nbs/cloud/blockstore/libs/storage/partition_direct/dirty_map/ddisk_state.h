@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range_field.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range/block_range_field.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/protos/public.h>
 
 #include <util/generic/string.h>

@@ -1,11 +1,10 @@
 #pragma once
 
-#include "public.h"
-
 #include "block_range_field_impl.h"
 #include "block_range_field_simple.h"
 
 #include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/public.h>
 
 #include <memory>
 

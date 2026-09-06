@@ -1,7 +1,8 @@
 #pragma once
 
-#include "block_range_allocator.h"
 #include "block_range_field_impl.h"
+
+#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range/block_range_allocator.h>
 
 #include <util/generic/set.h>
 

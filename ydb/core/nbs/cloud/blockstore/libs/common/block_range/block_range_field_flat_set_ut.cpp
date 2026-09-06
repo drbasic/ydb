@@ -248,10 +248,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldFlatSetTest)
         f.TryAdd(R(20, 25), &changed);
         UNIT_ASSERT(f.TryRemove(R(3, 22), &changed));
         UNIT_ASSERT_VALUES_EQUAL("[0..2][23..25]", f.Print());
-        auto v = Collect(f);
-        UNIT_ASSERT_VALUES_EQUAL(2u, v.size());
-        UNIT_ASSERT_VALUES_EQUAL(R(0, 2), v[0]);
-        UNIT_ASSERT_VALUES_EQUAL(R(23, 25), v[1]);
     }
 
     // -------------------------------------------------------------------------

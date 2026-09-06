@@ -1,6 +1,6 @@
 #include "dirty_map.h"
 
-#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range_algorithms.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range/block_range_algorithms.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/common/constants.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/host_roles.h>
 #include <ydb/core/nbs/cloud/blockstore/libs/storage/partition_direct/model/vchunk_config.h>
@@ -37,9 +37,13 @@ TBlocksDirtyMap::TBlocksDirtyMap(
     ui16 blockCount)
     : BlockSize(blockSize)
     , BlockCount(blockCount)
-    , DDiskStates(vChunkConfig.GetHostCount(), TDDiskState(blockCount))
     , PBufferCounters(vChunkConfig.GetHostCount())
 {
+    DDiskStates.reserve(vChunkConfig.GetHostCount());
+    while (DDiskStates.size() < vChunkConfig.GetHostCount()) {
+        DDiskStates.emplace_back(blockCount);
+    }
+
     UpdateConfig(vChunkConfig);
 }
 

@@ -12,6 +12,7 @@ SRCS(
 
 PEERDIR(
     ydb/core/nbs/cloud/blockstore/libs/common
+    ydb/core/nbs/cloud/blockstore/libs/common/block_range
 )
 
 END()
