@@ -54,7 +54,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
         auto allocator = std::make_shared<TTrackingAllocator>();
-        TArenaAllocatorPool pool(allocator, SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(allocator);
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < ChunksPerSlot; ++i) {
@@ -80,10 +80,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
 
     Y_UNIT_TEST(ChunkSizeIsRespected)
     {
-        constexpr size_t SlotSize = 4096;
         constexpr size_t ChunkSize = 512;
 
-        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(CreateArenaAllocator());
 
         void* first = pool.Allocate(ChunkSize);
         void* second = pool.Allocate(ChunkSize);
@@ -98,10 +97,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
 
     Y_UNIT_TEST(FreedChunkIsReused)
     {
-        constexpr size_t SlotSize = 4096;
         constexpr size_t ChunkSize = 512;
 
-        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(CreateArenaAllocator());
 
         void* ptr = pool.Allocate(ChunkSize);
         UNIT_ASSERT(ptr);
@@ -120,7 +118,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
         auto allocator = std::make_shared<TTrackingAllocator>();
-        TArenaAllocatorPool pool(allocator, SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(allocator);
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < ChunksPerSlot; ++i) {
@@ -147,7 +145,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
         auto allocator = std::make_shared<TTrackingAllocator>();
-        TArenaAllocatorPool pool(allocator, SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(allocator);
 
         TVector<void*> ptrs;
         for (size_t i = 0; i < 2 * ChunksPerSlot; ++i) {
@@ -170,10 +168,9 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
 
     Y_UNIT_TEST(FreedMemoryIsZeroedOnReuse)
     {
-        constexpr size_t SlotSize = 4096;
         constexpr size_t ChunkSize = 512;
 
-        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(CreateArenaAllocator());
 
         // Allocate, write pattern, free.
         void* ptr1 = pool.Allocate(ChunkSize);
@@ -198,7 +195,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunkSize = 1024;
         constexpr int Cycles = 5;
 
-        TArenaAllocatorPool pool(CreateArenaAllocator(), 4096, ChunkSize);
+        TArenaAllocatorPool pool(CreateArenaAllocator());
 
         for (int cycle = 0; cycle < Cycles; ++cycle) {
             void* ptr = pool.Allocate(ChunkSize);
@@ -224,7 +221,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
-        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(CreateArenaAllocator());
 
         TVector<void*> ptrs;
         ptrs.reserve(ChunksPerSlot);
@@ -256,7 +253,7 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         constexpr size_t ChunkSize = 512;
         constexpr size_t ChunksPerSlot = SlotSize / ChunkSize;
 
-        TArenaAllocatorPool pool(CreateArenaAllocator(), SlotSize, ChunkSize);
+        TArenaAllocatorPool pool(CreateArenaAllocator());
 
         // Allocate from two slots.
         TVector<void*> ptrs;
@@ -279,6 +276,92 @@ Y_UNIT_TEST_SUITE(ArenaAllocatorPoolTest)
         }
 
         pool.Deallocate(ptr);
+    }
+
+    Y_UNIT_TEST(DifferentSizesGetDistinctSlots)
+    {
+        constexpr size_t SizeA = 128;
+        constexpr size_t SizeB = 256;
+        constexpr size_t SizeC = 512;
+
+        auto allocator = std::make_shared<TTrackingAllocator>();
+        TArenaAllocatorPool pool(allocator);
+
+        // Allocate from three different sizes.
+        TVector<void*> ptrsA;
+        TVector<void*> ptrsB;
+        TVector<void*> ptrsC;
+
+        for (size_t i = 0; i < 4; ++i) {
+            ptrsA.push_back(pool.Allocate(SizeA));
+            ptrsB.push_back(pool.Allocate(SizeB));
+            ptrsC.push_back(pool.Allocate(SizeC));
+        }
+
+        // All pointers should be unique across all sizes.
+        std::unordered_set<void*> all(ptrsA.begin(), ptrsA.end());
+        all.insert(ptrsB.begin(), ptrsB.end());
+        all.insert(ptrsC.begin(), ptrsC.end());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ptrsA.size() + ptrsB.size() + ptrsC.size(),
+            all.size());
+
+        // Each size should have its own slot.
+        UNIT_ASSERT_VALUES_EQUAL(3, allocator->AllocatedBlocks());
+
+        // Free all from one size — its slot should be reclaimed.
+        for (void* ptr: ptrsA) {
+            pool.Deallocate(ptr);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, allocator->AllocatedBlocks());
+
+        // Re-allocate same size — should reuse the reclaimed slot.
+        void* ptrA = pool.Allocate(SizeA);
+        UNIT_ASSERT_EQUAL(ptrsA[0], ptrA);
+
+        // Free everything.
+        for (void* ptr: ptrsB) {
+            pool.Deallocate(ptr);
+        }
+        for (void* ptr: ptrsC) {
+            pool.Deallocate(ptr);
+        }
+        pool.Deallocate(ptrA);
+        UNIT_ASSERT_VALUES_EQUAL(0, allocator->AllocatedBlocks());
+    }
+
+    Y_UNIT_TEST(MixedSizeAllocFreeCycles)
+    {
+        constexpr size_t Sizes[] = {64, 128, 256, 512, 1024};
+        constexpr size_t NumSizes = sizeof(Sizes) / sizeof(Sizes[0]);
+
+        TArenaAllocatorPool pool(CreateArenaAllocator());
+
+        TVector<TVector<void*>> ptrs(NumSizes);
+        for (size_t i = 0; i < NumSizes; ++i) {
+            for (size_t j = 0; j < 3; ++j) {
+                ptrs[i].push_back(pool.Allocate(Sizes[i]));
+            }
+        }
+
+        // Free and re-allocate in a mixed order.
+        for (size_t round = 0; round < 2; ++round) {
+            for (size_t i = 0; i < NumSizes; ++i) {
+                for (auto* ptr: ptrs[i]) {
+                    pool.Deallocate(ptr);
+                }
+                for (size_t j = 0; j < 3; ++j) {
+                    ptrs[i][j] = pool.Allocate(Sizes[i]);
+                }
+            }
+        }
+
+        // Free everything.
+        for (size_t i = 0; i < NumSizes; ++i) {
+            for (auto* ptr: ptrs[i]) {
+                pool.Deallocate(ptr);
+            }
+        }
     }
 }
 

@@ -9,15 +9,21 @@ namespace NYdb::NBS::NBlockStore {
 
 //////////////////////////////////////////////////////////////////////////////
 
+namespace {
+constexpr size_t DefaultSlotSize = 4096;
+}   // namespace
+
+//////////////////////////////////////////////////////////////////////////////
+
 TArenaAllocatorPool::TSlot::TSlot(
     IArenaAllocatorPtr allocator,
     size_t slotSize,
-    size_t chunksPerSlot,
     size_t chunkSize)
     : Base(allocator->Allocate(slotSize))
     , Allocator(std::move(allocator))
-    , ChunksPerSlot(chunksPerSlot)
+    , SlotSize(slotSize)
     , ChunkSize(chunkSize)
+    , MaxChunkCapacity(slotSize / chunkSize)
 {
     Y_ABORT_UNLESS(Base);
 }
@@ -38,7 +44,7 @@ void* TArenaAllocatorPool::TSlot::Allocate()
         --FreeCount;
         return result;
     }
-    if (AllocatedChunks == ChunksPerSlot) {
+    if (AllocatedChunks == MaxChunkCapacity) {
         return nullptr;
     }
     return static_cast<char*>(Base) + AllocatedChunks++ * ChunkSize;
@@ -54,7 +60,7 @@ void TArenaAllocatorPool::TSlot::Free(void* chunk) noexcept
 
 bool TArenaAllocatorPool::TSlot::Full() const noexcept
 {
-    return AllocatedChunks == ChunksPerSlot && FreeCount == 0;
+    return AllocatedChunks == MaxChunkCapacity && FreeCount == 0;
 }
 
 bool TArenaAllocatorPool::TSlot::Empty() const noexcept
@@ -64,38 +70,56 @@ bool TArenaAllocatorPool::TSlot::Empty() const noexcept
 
 //////////////////////////////////////////////////////////////////////////////
 
+TArenaAllocatorPool::TSlot* TArenaAllocatorPool::TSlots::Acquire(
+    IArenaAllocatorPtr allocator,
+    size_t chunkSize,
+    size_t slotSize)
+{
+    if (!SlotSize) {
+        SlotSize = slotSize ? slotSize : Max(DefaultSlotSize, chunkSize);
+    }
+
+    Slots.emplace_back(std::move(allocator), SlotSize, chunkSize);
+    CurrentSlot = &Slots.back();
+    return CurrentSlot;
+}
+
+void TArenaAllocatorPool::TSlots::Release(TSlot* slot) noexcept
+{
+    if (CurrentSlot == slot) {
+        CurrentSlot = nullptr;
+    }
+    Slots.remove_if([slot](const TSlot& s) { return &s == slot; });
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
 TArenaAllocatorPool::TArenaAllocatorPool(
     IArenaAllocatorPtr allocator,
-    size_t slotSize,
-    size_t chunkSize)
+    size_t slotSize)
     : Allocator(std::move(allocator))
     , SlotSize(slotSize)
-    , ChunkSize(chunkSize)
-    , ChunksPerSlot(SlotSize / ChunkSize)
 {
     Y_ABORT_UNLESS(Allocator);
-    Y_ABORT_UNLESS(SlotSize);
-    Y_ABORT_UNLESS(ChunkSize);
-    Y_ABORT_UNLESS(ChunkSize <= SlotSize);
-    Y_ABORT_UNLESS(SlotSize % ChunkSize == 0);
 }
 
 TArenaAllocatorPool::~TArenaAllocatorPool() = default;
 
 void* TArenaAllocatorPool::Allocate(size_t size)
 {
-    Y_ABORT_UNLESS(size <= ChunkSize);
-
-    if (!CurrentSlot) {
-        AcquireSlot();
+    auto& slots = SizeMap[size];
+    if (!slots.CurrentSlot) {
+        auto* slot = slots.Acquire(Allocator, size, SlotSize);
+        Bases.emplace(slot->Base, slot);
     }
 
-    if (void* ptr = CurrentSlot->Allocate()) {
+    if (void* ptr = slots.CurrentSlot->Allocate()) {
         return ptr;
     }
 
-    AcquireSlot();
-    return CurrentSlot->Allocate();
+    auto* slot = slots.Acquire(Allocator, size, SlotSize);
+    Bases.emplace(slot->Base, slot);
+    return slot->Allocate();
 }
 
 void TArenaAllocatorPool::Deallocate(void* ptr) noexcept
@@ -108,47 +132,26 @@ void TArenaAllocatorPool::Deallocate(void* ptr) noexcept
     // it is the slot with the greatest base <= ptr.
     auto it = Bases.upper_bound(ptr);
     if (it == Bases.begin()) {
-        // Unknown pointer.
         Y_ABORT_UNLESS(false, "Deallocate: unknown pointer");
     }
     --it;
     auto* slot = it->second;
+
     Y_ABORT_UNLESS(
-        static_cast<char*>(ptr) < static_cast<char*>(slot->Base) + SlotSize,
+        static_cast<char*>(ptr) <
+            static_cast<char*>(slot->Base) + slot->SlotSize,
         "Deallocate: unknown pointer");
 
     slot->Free(ptr);
 
     if (slot->Empty()) {
-        // The whole slot is free again - destroy it, returning its memory
-        // to the allocator.
-        ReleaseSlot(slot);
-    }
-}
-
-void TArenaAllocatorPool::AcquireSlot()
-{
-    // Try to find an existing slot with free chunks.
-    for (auto& slot: Slots) {
-        if (!slot.Full()) {
-            CurrentSlot = &slot;
-            return;
+        Bases.erase(it);
+        auto& slots = SizeMap[slot->ChunkSize];
+        slots.Release(slot);
+        if (slots.Empty()) {
+            SizeMap.erase(slot->ChunkSize);
         }
     }
-
-    // Allocate a new slot.
-    Slots.emplace_back(Allocator, SlotSize, ChunksPerSlot, ChunkSize);
-    CurrentSlot = &Slots.back();
-    Bases.emplace(CurrentSlot->Base, CurrentSlot);
-}
-
-void TArenaAllocatorPool::ReleaseSlot(TSlot* slot) noexcept
-{
-    if (CurrentSlot == slot) {
-        CurrentSlot = nullptr;
-    }
-    Bases.erase(slot->Base);
-    Slots.remove_if([slot](const TSlot& s) { return &s == slot; });
 }
 
 //////////////////////////////////////////////////////////////////////////////

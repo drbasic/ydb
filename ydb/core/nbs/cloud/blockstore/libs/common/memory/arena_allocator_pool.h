@@ -18,8 +18,7 @@ class TArenaAllocatorPool: TDisableCopy
 public:
     explicit TArenaAllocatorPool(
         IArenaAllocatorPtr allocator,
-        size_t slotSize,
-        size_t chunkSize);
+        size_t slotSize = 0);
     ~TArenaAllocatorPool();
 
     void* Allocate(size_t size);
@@ -41,17 +40,14 @@ private:
     {
         void* Base = nullptr;
         IArenaAllocatorPtr Allocator;
-        const size_t ChunksPerSlot = 0;
+        const size_t SlotSize = 0;
         const size_t ChunkSize = 0;
+        const size_t MaxChunkCapacity = 0;
         size_t AllocatedChunks = 0;   // chunks carved so far
         TFreeChunk* FreeList = nullptr;
         size_t FreeCount = 0;
 
-        TSlot(
-            IArenaAllocatorPtr allocator,
-            size_t slotSize,
-            size_t chunksPerSlot,
-            size_t chunkSize);
+        TSlot(IArenaAllocatorPtr allocator, size_t slotSize, size_t chunkSize);
         ~TSlot();
 
         void* Allocate();
@@ -60,21 +56,36 @@ private:
         [[nodiscard]] bool Empty() const noexcept;
     };
 
-    using TSlots = TList<TSlot>;
+    // A collection of slots for a single chunk size.
+    class TSlots
+    {
+    public:
+        TSlots() = default;
+        TSlot* Acquire(
+            IArenaAllocatorPtr allocator,
+            size_t chunkSize,
+            size_t slotSize);
+        void Release(TSlot* slot) noexcept;
 
-    void AcquireSlot();
-    void ReleaseSlot(TSlot* slot) noexcept;
+        [[nodiscard]] bool Empty() const noexcept
+        {
+            return Slots.empty();
+        }
+
+        TList<TSlot> Slots;
+        TSlot* CurrentSlot = nullptr;
+
+    private:
+        size_t SlotSize = 0;
+    };
+
+    using TSizeMap = TMap<size_t, TSlots>;
 
     IArenaAllocatorPtr Allocator;
     const size_t SlotSize;
-    const size_t ChunkSize;
-    const size_t ChunksPerSlot;
-
-    TSlots Slots;
+    TSizeMap SizeMap;
     // Slot bases for O(log n) lookup in Deallocate.
     TMap<void*, TSlot*> Bases;
-    // Slot currently being carved into chunks.
-    TSlot* CurrentSlot = nullptr;
 };
 
 /////////////////////////////////////////////////////////////////////////////
