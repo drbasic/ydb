@@ -1,7 +1,5 @@
 #include "block_range_field.h"
 
-#include "block_range_allocator.h"
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/array_ref.h>
@@ -145,20 +143,13 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
     Y_UNIT_TEST(MemoryPerSingleRange)
     {
-        // The pool is created only when the inline storage overflows.
+        // StdSet now uses TArenaAllocatorPool which doesn't track per-instance
+        // memory. The test only verifies that the field switches to Impl.
         TBlockRangeField f;
         UNIT_ASSERT(f.Add(R(100, 200)));
-        UNIT_ASSERT_VALUES_EQUAL(0u, f.GetUsedBytes());
-        UNIT_ASSERT_VALUES_EQUAL(0u, f.GetPoolSize());
 
-        // The second disjoint range switches the field to the set-backed
-        // implementation backed by the per-instance pool.
         UNIT_ASSERT(f.Add(R(300, 400)));
         UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasImpl(f));
-        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
-        UNIT_ASSERT_LE(f.GetUsedBytes(), f.GetPoolSize());
-
-        Cout << "Bytes per one range in TSet: " << f.GetUsedBytes() << Endl;
     }
 
     Y_UNIT_TEST(MemoryScalingWithRangeCount)
@@ -168,8 +159,7 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
             UNIT_ASSERT(f.Add(R(i * 10, i * 10 + 5)));
         }
 
-        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
-        UNIT_ASSERT_LE(f.GetUsedBytes(), f.GetPoolSize());
+        // Memory tracking is not available with the shared arena allocator.
     }
 
     Y_UNIT_TEST(MemoryPerMergedRange)
@@ -185,7 +175,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
 
         // Should be two ranges: [0, 99] and [500, 600]
         UNIT_ASSERT_VALUES_EQUAL(2u, f.GetSegmentCount());
-        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
     }
 
     Y_UNIT_TEST(MemoryPerLargeRange)
@@ -197,7 +186,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         UNIT_ASSERT(f.Add(R(200, 60000)));
 
         UNIT_ASSERT_VALUES_EQUAL(2u, f.GetSegmentCount());
-        UNIT_ASSERT_GT(f.GetUsedBytes(), 0u);
     }
 
     Y_UNIT_TEST(MemoryAfterRemoveAndAdd)
@@ -206,18 +194,10 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         f.Add(R(0, 1000));
         f.Add(R(2000, 3000));
 
-        size_t memBefore = f.GetUsedBytes();
-
-        // Remove and add back — memory is NOT freed (pool allocator), the
-        // set-backed implementation stays alive because the field is not
-        // empty.
+        // Verify that remove + add keeps the impl alive.
         f.Remove(R(0, 1000));
         UNIT_ASSERT(TBlockRangeFieldTestAccessor::HasImpl(f));
         f.Add(R(0, 1000));
-
-        size_t memAfter = f.GetUsedBytes();
-        // Memory should be higher because pool allocator doesn't free
-        UNIT_ASSERT_GE(memAfter, memBefore);
     }
 
     Y_UNIT_TEST(PoolGrowsOnDemand)
@@ -227,9 +207,8 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
             UNIT_ASSERT(f.Add(R(i * 20, i * 20 + 5)));
         }
 
-        // The pool must grow beyond its initial chunk instead of failing.
-        UNIT_ASSERT_GT(f.GetPoolSize(), DefaultBlockRangePoolChunkSize);
-        UNIT_ASSERT_GE(f.GetPoolSize(), f.GetUsedBytes());
+        // The arena allocator pool grows on demand — verified by successful
+        // allocation of many ranges.
     }
 
     Y_UNIT_TEST(PerInstancePools)
@@ -242,9 +221,6 @@ Y_UNIT_TEST_SUITE(TBlockRangeFieldTest)
         UNIT_ASSERT(f1.Add(R(20, 30)));
         UNIT_ASSERT(f2.Add(R(0, 10)));
         UNIT_ASSERT(f2.Add(R(20, 30)));
-
-        UNIT_ASSERT_GT(f1.GetUsedBytes(), 0u);
-        UNIT_ASSERT_GT(f2.GetUsedBytes(), 0u);
     }
 
     Y_UNIT_TEST(CopyingIsForbidden)

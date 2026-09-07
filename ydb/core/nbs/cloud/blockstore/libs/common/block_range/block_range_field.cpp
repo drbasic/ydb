@@ -1,6 +1,5 @@
 #include "block_range_field.h"
 
-#include "block_range_allocator.h"
 #include "block_range_field_flat_set.h"
 #include "block_range_field_set.h"
 #include "block_range_field_std_set.h"
@@ -13,7 +12,7 @@ namespace NYdb::NBS::NBlockStore {
 
 namespace {
 
-////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 void AddRanges(const IBlockRangeFieldImpl& source, IBlockRangeFieldImpl* target)
 {
@@ -26,26 +25,17 @@ void AddRanges(const IBlockRangeFieldImpl& source, IBlockRangeFieldImpl* target)
         });
 }
 
-std::unique_ptr<TBlockRangePool> MakePool()
-{
-    return std::make_unique<TBlockRangePool>(DefaultBlockRangePoolChunkSize);
-}
-
 std::unique_ptr<IBlockRangeFieldImpl> MakeImpl(
     IBlockRangeFieldImpl::EBackend backend,
     ui16 maxBlockCount,
     const IBlockRangeFieldImpl& source,
-    std::unique_ptr<TBlockRangePool>& pool,
     IArenaAllocatorPtr allocator)
 {
     switch (backend) {
         case IBlockRangeFieldImpl::EBackend::StdSet: {
-            if (!pool) {
-                pool = MakePool();
-            }
             auto result = std::make_unique<TBlockRangeFieldStdSet>(
                 maxBlockCount,
-                pool.get());
+                allocator);
             AddRanges(source, result.get());
             return result;
         }
@@ -87,7 +77,6 @@ TBlockRangeField::TBlockRangeField(TBlockRangeField&& other) noexcept
     : MaxBlockCount(other.MaxBlockCount)
     , PreferredBackend(other.PreferredBackend)
     , Simple(std::move(other.Simple))
-    , Pool(std::move(other.Pool))
     , ArenaAllocator(std::move(other.ArenaAllocator))
     , Impl(std::move(other.Impl))
 {}
@@ -97,7 +86,6 @@ TBlockRangeField& TBlockRangeField::operator=(TBlockRangeField&& other) noexcept
     MaxBlockCount = other.MaxBlockCount;
     PreferredBackend = other.PreferredBackend;
     Simple = std::move(other.Simple);
-    Pool = std::move(other.Pool);
     ArenaAllocator = std::move(other.ArenaAllocator);
     Impl = std::move(other.Impl);
     return *this;
@@ -118,7 +106,7 @@ bool TBlockRangeField::Add(TBlockRange16 range)
     }
 
     Impl =
-        MakeImpl(PreferredBackend, MaxBlockCount, Simple, Pool, ArenaAllocator);
+        MakeImpl(PreferredBackend, MaxBlockCount, Simple, ArenaAllocator);
     Y_ABORT_UNLESS(Impl->TryAdd(range, &changed));
     Simple.Clear();
     return changed;
@@ -154,7 +142,7 @@ bool TBlockRangeField::Remove(TBlockRange16 range)
     }
 
     Impl =
-        MakeImpl(PreferredBackend, MaxBlockCount, Simple, Pool, ArenaAllocator);
+        MakeImpl(PreferredBackend, MaxBlockCount, Simple, ArenaAllocator);
     Y_ABORT_UNLESS(Impl->TryRemove(range, &changed));
     Simple.Clear();
     return changed;
@@ -185,7 +173,6 @@ bool TBlockRangeField::Clear()
 
     Simple.Clear();
     Impl.reset();
-    Pool.reset();
     return true;
 }
 
@@ -258,20 +245,9 @@ void TBlockRangeField::CollapseImpl()
     }
     if (Impl->Empty()) {
         Impl.reset();
-        Pool.reset();
     }
 }
 
-size_t TBlockRangeField::GetUsedBytes() const
-{
-    return Pool ? Pool->GetUsedBytes() : 0;
-}
-
-size_t TBlockRangeField::GetPoolSize() const
-{
-    return Pool ? Pool->GetPoolSize() : 0;
-}
-
-////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
 
 }   // namespace NYdb::NBS::NBlockStore

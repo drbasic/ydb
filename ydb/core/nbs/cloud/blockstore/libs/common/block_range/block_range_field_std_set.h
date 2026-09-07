@@ -2,7 +2,8 @@
 
 #include "block_range_field_impl.h"
 
-#include <ydb/core/nbs/cloud/blockstore/libs/common/block_range/block_range_allocator.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator.h>
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator_adapter.h>
 
 #include <util/generic/set.h>
 
@@ -13,15 +14,14 @@ namespace NYdb::NBS::NBlockStore {
 //////////////////////////////////////////////////////////////////////////////
 
 // Stores normalized block ranges in a set ordered by their end index.
-// Set nodes are allocated from the provided TBlockRangePool. When no pool is
-// provided, the set creates and owns its own pool.
+// Set nodes are allocated from a TArenaAllocatorPool backed by the provided
+// IArenaAllocator.
 class TBlockRangeFieldStdSet: public TNodeBasedBlockRangeFieldBase
 {
 public:
-    // The external pool (if any) must outlive the set.
     explicit TBlockRangeFieldStdSet(
-        ui16 maxBlockCount = Max<ui16>(),
-        TBlockRangePool* pool = nullptr);
+        ui16 maxBlockCount,
+        IArenaAllocatorPtr allocator);
 
     [[nodiscard]] EBackend GetBackend() const override;
 
@@ -45,13 +45,12 @@ private:
         }
     };
 
-    using TAllocator = TBlockRangeFieldAllocator<TBlockRange16>;
+    using TAllocator = TArenaPoolAdapter<TBlockRange16>;
 
     const ui16 MaxBlockCount;
-    // Used only when no external pool is provided. Must be declared before
-    // Intervals so that it is fully constructed when the set's allocator is
-    // initialized.
-    std::unique_ptr<TBlockRangePool> OwnPool;
+    // Must be declared before Intervals so that it outlives the set's
+    // allocator.
+    std::shared_ptr<TArenaAllocatorPool> Pool;
     TSet<TBlockRange16, TBlockRangeComparator, TAllocator> Intervals;
 };
 

@@ -1,5 +1,9 @@
 #include "block_range_field_std_set.h"
 
+#include "block_range_allocator.h"
+
+#include <ydb/core/nbs/cloud/blockstore/libs/common/memory/arena_allocator_pool.h>
+
 #include <util/string/builder.h>
 
 namespace NYdb::NBS::NBlockStore {
@@ -8,15 +12,12 @@ namespace NYdb::NBS::NBlockStore {
 
 TBlockRangeFieldStdSet::TBlockRangeFieldStdSet(
     ui16 maxBlockCount,
-    TBlockRangePool* pool)
+    IArenaAllocatorPtr allocator)
     : MaxBlockCount(maxBlockCount)
-    , OwnPool(
-          pool ? nullptr
-               : std::make_unique<TBlockRangePool>(
-                     DefaultBlockRangePoolChunkSize))
+    , Pool(std::make_shared<TArenaAllocatorPool>(std::move(allocator)))
     , Intervals(
           TBlockRangeComparator(),
-          TAllocator(pool ? pool : OwnPool.get()))
+          TAllocator(Pool.get()))
 {}
 
 IBlockRangeFieldImpl::EBackend TBlockRangeFieldStdSet::GetBackend() const
