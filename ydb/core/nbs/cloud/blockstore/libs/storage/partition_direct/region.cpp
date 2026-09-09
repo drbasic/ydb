@@ -25,6 +25,7 @@ size_t VChunkIndexFromHeaders(const TRequestHeaders& headers)
 ////////////////////////////////////////////////////////////////////////////////
 
 TRegion::TRegion(
+    IArenaAllocatorPtr arenaAllocator,
     NActors::TActorSystem* actorSystem,
     ITraceService* traceService,
     IPartitionDirectService* partitionDirectService,
@@ -56,6 +57,7 @@ TRegion::TRegion(
 
         const auto* dirtyMapState = dirtyMapStates.FindPtr(vChunkIndex);
         auto vChunk = std::make_shared<TVChunk>(
+            arenaAllocator,
             ActorSystem,
             traceService,
             partitionDirectService,
