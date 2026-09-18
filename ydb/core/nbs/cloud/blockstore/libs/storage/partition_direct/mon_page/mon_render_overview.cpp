@@ -227,7 +227,8 @@ void TDbgConfigTableData::ApplyRealConfigs(
         for (THostIndex host = 0; host < config.GetHostCount(); ++host) {
             const auto& connection = dbg.Connections[host];
             if (config.GetDDiskRole(host) != EHostRole::None) {
-                const auto state = config.GetHostHumanReadableState(host);
+                const auto state =
+                    config.GetHostHumanReadableState(host, false);
                 ++Table[connection.DDiskId.NodeId][columnIndex]
                       .DDiskStates[state];
             }
@@ -256,7 +257,8 @@ void TDbgConfigTableData::TransferDefaultConfigsToTable(
             for (THostIndex host = 0; host < config.GetHostCount(); ++host) {
                 const auto& connection = dbg.Connections[host];
                 if (config.GetDDiskRole(host) != EHostRole::None) {
-                    const auto state = config.GetHostHumanReadableState(host);
+                    const auto state =
+                        config.GetHostHumanReadableState(host, false);
                     Table[connection.DDiskId.NodeId][columnIndex]
                         .DDiskStates[state] += entry.VChunkCount;
                 }
